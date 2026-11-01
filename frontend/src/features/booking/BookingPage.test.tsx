@@ -247,6 +247,33 @@ describe('BookingPage', () => {
     expect(within(alert).queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument();
   });
 
+  it('on 409 VEHICLE_ALREADY_BOOKED shows the detail and no suggested times', async () => {
+    mocked.bookAppointment.mockRejectedValueOnce(
+      new ApiError({
+        status: 409,
+        code: 'VEHICLE_ALREADY_BOOKED',
+        title: 'Vehicle already booked',
+        detail: 'This vehicle already has a booking at that time.',
+        // Even if the API sent some, they must not be offered for this error.
+        suggestedStartTimes: ['2030-01-15T04:00:00Z'],
+      }),
+    );
+    const user = await renderPage();
+    await chooseAllButTime(user);
+    await user.click(timeButton('10:30'));
+    await user.click(screen.getByRole('button', { name: 'Book appointment' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(within(alert).getByText('This vehicle already has a booking at that time')).toBeInTheDocument();
+    expect(within(alert).getByText('This vehicle already has a booking at that time.')).toBeInTheDocument();
+    expect(within(alert).getByText('Please pick another time or another vehicle.')).toBeInTheDocument();
+    expect(within(alert).queryByText('This time was just taken')).not.toBeInTheDocument();
+    expect(within(alert).queryByRole('group', { name: 'Suggested start times' })).not.toBeInTheDocument();
+    expect(within(alert).queryByRole('button')).not.toBeInTheDocument();
+    // Free times are not refetched: the time itself is not taken.
+    expect(mocked.getAvailability).toHaveBeenCalledTimes(1);
+  });
+
   it('shows a network error with a Try again button', async () => {
     mocked.bookAppointment.mockRejectedValueOnce(ApiError.network(new TypeError('Failed to fetch')));
     const user = await renderPage();

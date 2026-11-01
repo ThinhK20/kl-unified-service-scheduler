@@ -4,6 +4,7 @@ import {
   formatLongDate,
   formatTime,
   formatTimeRange,
+  getCardDate,
   getMonthAndDay,
   getTimeZoneOffsetMinutes,
   isIsoDate,
@@ -85,5 +86,19 @@ describe('isIsoDate', () => {
     expect(isIsoDate('2026-02-30')).toBe(false);
     expect(isIsoDate('2026-1-5')).toBe(false);
     expect(isIsoDate('')).toBe(false);
+  });
+});
+
+describe('getCardDate', () => {
+  const now = new Date('2026-11-01T05:00:00Z');
+
+  it('hides the year for the current year and shows it otherwise', () => {
+    expect(getCardDate(new Date('2026-11-10T03:30:00Z'), HCM, now)).toEqual({ month: 'Nov', day: '10', year: null });
+    expect(getCardDate(new Date('2025-10-02T01:15:00Z'), HCM, now)).toEqual({ month: 'Oct', day: '2', year: '2025' });
+  });
+
+  it('decides the year in the dealership zone', () => {
+    // 2026-12-31T18:00Z is already 1 Jan 2027 in Ho Chi Minh City.
+    expect(getCardDate(new Date('2026-12-31T18:00:00Z'), HCM, now).year).toBe('2027');
   });
 });

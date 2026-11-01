@@ -4,7 +4,9 @@ import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
 import { Spinner } from '../../components/Spinner';
 import { DEMO_CUSTOMER_ID } from '../../config';
+import { useNow } from '../../lib/useNow';
 import { AppointmentCard } from './AppointmentCard';
+import { isCancellable } from './appointmentRules';
 import { useAppointments } from './useAppointments';
 import { useCancelAppointment } from './useCancelAppointment';
 
@@ -19,6 +21,7 @@ function cancelErrorText(error: Error | null): string {
 export function AppointmentsPage() {
   const appointments = useAppointments(DEMO_CUSTOMER_ID);
   const cancel = useCancelAppointment();
+  const now = useNow();
 
   return (
     <main className="page page--narrow">
@@ -49,6 +52,8 @@ export function AppointmentsPage() {
             <li key={a.id}>
               <AppointmentCard
                 appointment={a}
+                canCancel={isCancellable(a, now)}
+                now={now}
                 onCancel={cancel.cancel}
                 isCancelling={cancel.cancellingId === a.id}
                 cancelError={cancel.failedId === a.id ? cancelErrorText(cancel.error) : null}

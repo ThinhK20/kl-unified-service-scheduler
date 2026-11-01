@@ -135,6 +135,20 @@ export function getMonthAndDay(date: Date, timeZone: string): { month: string; d
   return { month, day: String(getZonedParts(date, timeZone).day) };
 }
 
+/**
+ * Date badge parts for a card. `year` is set only when the instant is not in the current
+ * year (both measured in the zone), e.g. { month: 'Nov', day: '10', year: '2025' }.
+ */
+export function getCardDate(
+  date: Date,
+  timeZone: string,
+  now: Date = new Date(),
+): { month: string; day: string; year: string | null } {
+  const year = getZonedParts(date, timeZone).year;
+  const currentYear = getZonedParts(now, timeZone).year;
+  return { ...getMonthAndDay(date, timeZone), year: year === currentYear ? null : String(year) };
+}
+
 /** Adds minutes to an instant. */
 export function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);

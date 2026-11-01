@@ -16,6 +16,7 @@ export function BookingErrorBox({ error, suggestions, onPickSuggestion, onRetry,
   return (
     <Alert title={error.title} tone={tone}>
       <p className="alert__text">{error.message}</p>
+      {error.hint && <p className="alert__text">{error.hint}</p>}
       {error.details.length > 0 && (
         <ul className="alert__list">
           {error.details.map((d) => (

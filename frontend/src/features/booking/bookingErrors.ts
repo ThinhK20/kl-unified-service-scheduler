@@ -3,6 +3,7 @@ import { isApiError } from '../../api/types';
 export type BookingErrorKind =
   | 'taken'
   | 'idempotency-conflict'
+  | 'vehicle-booked'
   | 'rule'
   | 'invalid'
   | 'not-found'
@@ -14,6 +15,8 @@ export interface BookingErrorView {
   kind: BookingErrorKind;
   title: string;
   message: string;
+  /** What the user can do next, shown under the message. */
+  hint?: string;
   /** Extra lines, e.g. field errors from a 400. */
   details: string[];
   /** Show a "Try again" button that resends the same request with the same key. */
@@ -46,6 +49,15 @@ export function describeBookingError(error: unknown): BookingErrorView {
         suggestedStarts,
       };
     }
+    case 'VEHICLE_ALREADY_BOOKED':
+      // Not a "time taken" case: no suggested times, and another technician/bay would not help.
+      return {
+        ...base,
+        kind: 'vehicle-booked',
+        title: 'This vehicle already has a booking at that time',
+        message: error.detail ?? 'This vehicle already has a booking at that time.',
+        hint: 'Please pick another time or another vehicle.',
+      };
     case 'IDEMPOTENCY_CONFLICT':
       return {
         ...base,
