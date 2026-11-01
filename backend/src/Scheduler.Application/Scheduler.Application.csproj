@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Scheduler.Domain\Scheduler.Domain.csproj" />
   </ItemGroup>
 </Project>

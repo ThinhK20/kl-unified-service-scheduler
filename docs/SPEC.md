@@ -27,6 +27,13 @@ This file is the contract every agent builds against. It restates the approved b
 - Availability `slots` and `suggestedStartTimes` are sorted ascending by start time.
 - "Today" for the date picker is today in the dealership's time zone.
 - CORS allows http://localhost:5173 and http://localhost:3000.
+- Availability for an inactive dealership/service or a service not offered there → 422 BOOKING_RULE_VIOLATION.
+- GET /api/dealerships returns active dealerships only.
+- GET /api/appointments for an unknown customer → 200 with []; customerId <= 0 → 400.
+- Idempotency replay wins over the time rules: format/grid/offset are checked first, but "start is in the future"
+  is checked AFTER the idempotency lookup, so a retry of a saved booking always gets the saved 201.
+- Infrastructure must NOT use EnableRetryOnFailure (explicit transactions + the handler's own single retry).
+- Idempotency save = one transaction, two SaveChanges: appointment + slots (gets Id), then the key row with ResponseJson.
 
 ## 1. Goal
 A customer picks a vehicle, a service type, a dealership and a start time. The system checks that one qualified
