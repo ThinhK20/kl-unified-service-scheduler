@@ -22,6 +22,11 @@ This file is the contract every agent builds against. It restates the approved b
 - Domain throws `DomainException`; Application checks rules first and returns `Result<T>`.
 - No `Complete()` flow in this version (nothing in the API sets Completed).
 - IdempotencyKeys is an Application/Infrastructure concern, not a Domain entity.
+- EVERY non-2xx API response is ProblemDetails with a `code` — including model-binding 400s, missing
+  Idempotency-Key (400 INVALID_REQUEST), unknown routes/ids (404 NOT_FOUND) and unhandled errors (500 INTERNAL_ERROR).
+- Availability `slots` and `suggestedStartTimes` are sorted ascending by start time.
+- "Today" for the date picker is today in the dealership's time zone.
+- CORS allows http://localhost:5173 and http://localhost:3000.
 
 ## 1. Goal
 A customer picks a vehicle, a service type, a dealership and a start time. The system checks that one qualified

@@ -1,0 +1,26 @@
+# Unified Service Scheduler - local stack.
+# Usage: copy .env.example to .env, set MSSQL_SA_PASSWORD, then `docker compose up -d`.
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: scheduler-db
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env (see .env.example)}
+      MSSQL_PID: Developer
+    ports:
+      - "1433:1433"
+    volumes:
+      - scheduler-sqldata:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$MSSQL_SA_PASSWORD\" -Q \"SELECT 1\" -b -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # Phase 7 adds the `api` service (depends_on db: condition service_healthy, port 5080:8080,
+  # ConnectionStrings__Scheduler, Database__MigrateOnStartup=true) and the `web` service (port 3000).
+
+volumes:
+  scheduler-sqldata:
