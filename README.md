@@ -84,6 +84,22 @@ $env:ConnectionStrings__Scheduler = "Server=localhost,1433;Database=Scheduler;Us
 ```
 
 The web app calls `VITE_API_BASE_URL` (default `http://localhost:5080`).
+
+**No Docker at all (Windows, SQL Server LocalDB).** LocalDB ships with Visual Studio ("Data storage and processing"
+workload) or the SQL Server Express installer. Point the API at it; on first start it creates the database, runs the
+migrations and loads the seed data:
+
+```powershell
+sqllocaldb start MSSQLLocalDB
+$env:ConnectionStrings__Scheduler = "Server=(localdb)\MSSQLLocalDB;Database=Scheduler;Trusted_Connection=True;TrustServerCertificate=True"
+dotnet run --project backend/src/Scheduler.Api
+```
+
+Then start the web app as above. For SQL Server Express use `Server=localhost\SQLEXPRESS;...` instead.
+To start again from an empty database: `cd backend; dotnet tool restore; dotnet ef database drop --project src/Scheduler.Infrastructure`
+(it uses the same environment variable). Without Docker you can run the Domain, Application, Architecture and frontend
+tests; the integration tests need Docker.
+
 Visual Studio / Rider users can run the requests in [`backend/src/Scheduler.Api/Scheduler.Api.http`](backend/src/Scheduler.Api/Scheduler.Api.http).
 
 ### c) Run the tests
