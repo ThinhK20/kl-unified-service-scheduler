@@ -368,6 +368,48 @@ public class BookAppointmentHandlerTests
         _app.Appointments.TransientFailuresLeft.Should().Be(99);
     }
 
+    [Fact]
+    public async Task Start_in_the_past_is_invalid()
+    {
+        var result = await Book(OilChange, "2026-11-09T06:45:00Z");
+
+        result.Error!.Code.Should().Be(ErrorCodes.InvalidRequest);
+        result.Error.FieldErrors["startTime"].Should().Equal("startTime must be in the future.");
+        _app.Appointments.AddCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Start_equal_to_now_is_invalid()
+    {
+        var result = await Book(OilChange, "2026-11-09T07:00:00Z");
+
+        result.Error!.Code.Should().Be(ErrorCodes.InvalidRequest);
+    }
+
+    [Fact]
+    public async Task Replay_whose_start_is_now_in_the_past_returns_the_saved_response()
+    {
+        var first = await Book(BrakeInspection, Local.Iso(13), key: "late-retry");
+        _app.Clock.UtcNow = Local.Utc(15); // the appointment has started already
+
+        var retry = await Book(BrakeInspection, Local.Iso(13), key: "late-retry");
+
+        retry.IsSuccess.Should().BeTrue();
+        retry.Value.IsReplay.Should().BeTrue();
+        retry.Value.Appointment.Should().BeEquivalentTo(first.Value.Appointment);
+        _app.Appointments.AddCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task New_key_with_a_past_start_is_still_invalid()
+    {
+        _app.Clock.UtcNow = Local.Utc(15);
+
+        var result = await Book(BrakeInspection, Local.Iso(13), key: "new");
+
+        result.Error!.Code.Should().Be(ErrorCodes.InvalidRequest);
+    }
+
     // ---------- Transient errors ----------
 
     [Fact]

@@ -1,5 +1,4 @@
 using Scheduler.Application.Appointments.Book;
-using Scheduler.Application.Tests.TestSupport;
 
 namespace Scheduler.Application.Tests.Appointments;
 
@@ -9,9 +8,7 @@ namespace Scheduler.Application.Tests.Appointments;
 /// </summary>
 public class BookAppointmentValidatorTests
 {
-    private readonly FakeClock _clock = new(new DateTime(2026, 11, 9, 7, 0, 0, DateTimeKind.Utc));
-
-    private BookAppointmentValidator Validator => new(_clock);
+    private static BookAppointmentValidator Validator => new();
 
     private static BookAppointmentCommand Valid(string? startTime = "2026-11-10T10:30:00+07:00", string? key = "k") =>
         new(key, 1, 1, 1, 1, startTime);
@@ -62,15 +59,10 @@ public class BookAppointmentValidatorTests
     }
 
     [Fact]
-    public void Start_time_in_the_past_is_rejected()
+    public void Start_time_in_the_past_is_not_checked_by_the_validator()
     {
-        ErrorsFor(Valid("2026-11-09T06:45:00Z"), "startTime").Should().Equal("startTime must be in the future.");
-    }
-
-    [Fact]
-    public void Start_time_equal_to_now_is_rejected()
-    {
-        ErrorsFor(Valid("2026-11-09T07:00:00Z"), "startTime").Should().Equal("startTime must be in the future.");
+        // The handler checks it after the idempotency lookup (SPEC section 0b).
+        ErrorsFor(Valid("2000-01-01T00:00:00Z"), "startTime").Should().BeEmpty();
     }
 
     [Theory]

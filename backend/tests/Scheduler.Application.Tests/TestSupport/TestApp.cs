@@ -41,7 +41,7 @@ public sealed class TestApp
     public AvailabilityService Availability { get; }
 
     public BookAppointmentHandler BookHandler(IIdempotencyStore? idempotency = null) => new(
-        new BookAppointmentValidator(Clock), Catalog, Catalog, Catalog, Catalog, Appointments, idempotency ?? Idempotency, Availability, Clock);
+        new BookAppointmentValidator(), Catalog, Catalog, Catalog, Catalog, Appointments, idempotency ?? Idempotency, Availability, Clock);
 
     public CancelAppointmentHandler CancelHandler() => new(Appointments, UnitOfWork);
 

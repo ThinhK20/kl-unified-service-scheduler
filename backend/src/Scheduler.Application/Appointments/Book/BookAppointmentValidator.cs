@@ -1,5 +1,4 @@
 using FluentValidation;
-using Scheduler.Application.Abstractions;
 using Scheduler.Application.Common;
 using Scheduler.Domain.ValueObjects;
 
@@ -8,15 +7,15 @@ namespace Scheduler.Application.Appointments.Book;
 /// <summary>
 /// Checks the request shape (SPEC section 5 step 1, the part that needs no database).
 /// Field names match the JSON body; the header is reported as "Idempotency-Key".
+/// "Start is in the future" is NOT checked here: the handler checks it after the idempotency lookup, so a retry of a
+/// saved booking always gets the saved response (SPEC section 0b).
 /// </summary>
 public sealed class BookAppointmentValidator : AbstractValidator<BookAppointmentCommand>
 {
     public const int MaxIdempotencyKeyLength = 100;
 
-    public BookAppointmentValidator(IClock clock)
+    public BookAppointmentValidator()
     {
-        ArgumentNullException.ThrowIfNull(clock);
-
         RuleFor(x => x.IdempotencyKey)
             .Cascade(CascadeMode.Stop)
             .NotEmpty().WithMessage("The Idempotency-Key header is required.")
@@ -36,8 +35,6 @@ public sealed class BookAppointmentValidator : AbstractValidator<BookAppointment
             .WithMessage("startTime must be an ISO-8601 date and time with an offset, for example 2026-11-10T10:30:00+07:00.")
             .Must(value => SlotGrid.IsOnGrid(ToUtc(value)))
             .WithMessage("startTime must be on the 15-minute grid (:00, :15, :30 or :45, with zero seconds).")
-            .Must(value => ToUtc(value) > clock.UtcNow)
-            .WithMessage("startTime must be in the future.")
             .OverridePropertyName("startTime");
     }
 

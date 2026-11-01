@@ -18,6 +18,8 @@ public sealed class BookAppointmentHandler
     /// <summary>How many nearby start times a NO_AVAILABILITY error suggests.</summary>
     public const int MaxSuggestions = 3;
 
+    private const string StartNotInFutureMessage = "startTime must be in the future.";
+
     private readonly IValidator<BookAppointmentCommand> _validator;
     private readonly ICustomerRepository _customers;
     private readonly IVehicleRepository _vehicles;
@@ -100,11 +102,19 @@ public sealed class BookAppointmentHandler
 
         var context = loaded.Value;
 
-        // Step 2: idempotency.
+        // Step 2: idempotency. A replay wins over the time rules below.
         var replay = await CheckIdempotencyAsync(request, cancellationToken);
         if (replay is not null)
         {
             return replay;
+        }
+
+        // Step 1c: the start must be in the future (checked after step 2, SPEC section 0b).
+        if (request.StartUtc <= _clock.UtcNow)
+        {
+            return Error.Validation(
+                StartNotInFutureMessage,
+                new Dictionary<string, string[]> { ["startTime"] = [StartNotInFutureMessage] });
         }
 
         // Step 3: the whole half-open range must be inside opening hours.
