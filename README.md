@@ -465,7 +465,7 @@ backend/
 frontend/
   src/api/ (apiClient, appointmentsApi, types)   src/features/booking/   src/features/appointments/
   src/components/ (Button, Select, Alert, …)     src/lib/ (date and format helpers)
-docs/  SPEC.md  build-plan-original.md  design/  screenshots/
+docs/  SPEC.md (design and spec)  design/  screenshots/
 ```
 
 ### SOLID
