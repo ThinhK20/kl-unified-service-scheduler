@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Scheduler.Application\Scheduler.Application.csproj" />
+    <ProjectReference Include="..\Scheduler.Domain\Scheduler.Domain.csproj" />
+  </ItemGroup>
+</Project>

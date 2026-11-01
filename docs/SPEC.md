@@ -13,6 +13,16 @@ This file is the contract every agent builds against. It restates the approved b
   booking success is a **confirmation card on the booking page** (plan), the date is a **date picker** (plan).
 - Plain, simple English in docs, comments and UI copy.
 
+## 0b. Orchestrator rulings (derived from the plan; flagged to the owner)
+- FluentValidation validators live in Application (plan: "interfaces, DTOs, validators" are Application).
+- Inactive dealership → 422 BOOKING_RULE_VIOLATION (same rule as an inactive service); unknown id → 404.
+- A job may not cross local midnight; close time 00:00 is not supported.
+- The strategy's "fewest appointments that day" counts only Confirmed appointments.
+- `SlotGrid` stays a static domain helper (no state); the README calls TimeRange the value object and SlotGrid the grid rules.
+- Domain throws `DomainException`; Application checks rules first and returns `Result<T>`.
+- No `Complete()` flow in this version (nothing in the API sets Completed).
+- IdempotencyKeys is an Application/Infrastructure concern, not a Domain entity.
+
 ## 1. Goal
 A customer picks a vehicle, a service type, a dealership and a start time. The system checks that one qualified
 technician and one free service bay are available for the WHOLE duration, and saves an Appointment linking customer,
@@ -245,6 +255,12 @@ Book a service page:
 My appointments page: cards newest first with status badge; Cancel on Confirmed ones; list refreshes after cancel.
 Code rules: components only render; data in hooks; hooks call `appointmentsApi.ts` (never fetch directly); all API
 types in `api/types.ts` matching section 6. API base URL from `VITE_API_BASE_URL` (default `http://localhost:5080`).
+
+## 10a. Build environment notes (agents' workspace)
+- Docker daemon runs in the workspace; `mcr.microsoft.com/mssql/server:2022-latest` is already pulled.
+- Docker Hub is NOT reachable. Run integration tests with `TESTCONTAINERS_RYUK_DISABLED=true` (ryuk is only the
+  cleanup helper). Tests must dispose their containers themselves (IAsyncLifetime / collection fixture).
+- Use one shared SQL Server container per test run (collection fixture), not one per test.
 
 ## 10. Ports / runtime
 API listens on `http://localhost:5080` (container port 8080 mapped to 5080). Web on `http://localhost:5173` (dev) /
