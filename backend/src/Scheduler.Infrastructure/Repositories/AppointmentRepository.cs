@@ -63,20 +63,22 @@ internal sealed class AppointmentRepository(SchedulerDbContext db) : IAppointmen
     }
 
     public Task<Appointment?> GetByIdWithDetailsAsync(int appointmentId, CancellationToken cancellationToken) =>
-        WithDetails(db.Appointments.AsNoTracking())
-            .FirstOrDefaultAsync(a => a.Id == appointmentId, cancellationToken);
+        DbCall.RunAsync(() => WithDetails(db.Appointments.AsNoTracking())
+            .FirstOrDefaultAsync(a => a.Id == appointmentId, cancellationToken));
 
     public async Task<IReadOnlyList<Appointment>> GetByCustomerWithDetailsAsync(int customerId, CancellationToken cancellationToken) =>
-        await WithDetails(db.Appointments.AsNoTracking())
+        await DbCall.RunAsync(() => WithDetails(db.Appointments.AsNoTracking())
             .Where(a => a.CustomerId == customerId)
             .OrderByDescending(a => a.StartUtc)
             .ThenByDescending(a => a.Id)
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken));
 
+    // Tracked. If two requests cancel the same appointment, the second save fails because its slot DELETEs
+    // affect 0 rows (before the rowversion check); EF reports that as a concurrency conflict too.
     public Task<Appointment?> GetForCancelAsync(int appointmentId, CancellationToken cancellationToken) =>
-        WithDetails(db.Appointments)
+        DbCall.RunAsync(() => WithDetails(db.Appointments)
             .Include(a => a.ResourceSlots)
-            .FirstOrDefaultAsync(a => a.Id == appointmentId, cancellationToken);
+            .FirstOrDefaultAsync(a => a.Id == appointmentId, cancellationToken));
 
     public async Task<IReadOnlyList<TakenSlot>> GetTakenSlotsAsync(
         IReadOnlyCollection<int> technicianIds,
@@ -97,14 +99,14 @@ internal sealed class AppointmentRepository(SchedulerDbContext db) : IAppointmen
         var start = windowUtc.StartUtc;
         var end = windowUtc.EndUtc;
 
-        return await db.ResourceSlots
+        return await DbCall.RunAsync(() => db.ResourceSlots
             .AsNoTracking()
             .Where(s => s.SlotStartUtc >= start && s.SlotStartUtc < end)
             .Where(s => (s.ResourceType == ResourceType.Technician && techIds.Contains(s.ResourceId))
                      || (s.ResourceType == ResourceType.Bay && bayIds.Contains(s.ResourceId)))
             .OrderBy(s => s.SlotStartUtc)
             .Select(s => new TakenSlot(s.ResourceType, s.ResourceId, s.SlotStartUtc))
-            .ToListAsync(cancellationToken);
+            .ToListAsync(cancellationToken));
     }
 
     public async Task<IReadOnlyDictionary<int, int>> CountConfirmedByTechnicianAsync(
@@ -123,14 +125,14 @@ internal sealed class AppointmentRepository(SchedulerDbContext db) : IAppointmen
         var start = windowUtc.StartUtc;
         var end = windowUtc.EndUtc;
 
-        return await db.Appointments
+        return await DbCall.RunAsync(() => db.Appointments
             .AsNoTracking()
             .Where(a => a.Status == AppointmentStatus.Confirmed
                      && a.StartUtc >= start && a.StartUtc < end
                      && ids.Contains(a.TechnicianId))
             .GroupBy(a => a.TechnicianId)
             .Select(g => new { TechnicianId = g.Key, Count = g.Count() })
-            .ToDictionaryAsync(x => x.TechnicianId, x => x.Count, cancellationToken);
+            .ToDictionaryAsync(x => x.TechnicianId, x => x.Count, cancellationToken));
     }
 
     private static IQueryable<Appointment> WithDetails(IQueryable<Appointment> query) =>

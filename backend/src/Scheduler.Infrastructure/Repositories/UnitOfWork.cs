@@ -15,6 +15,7 @@ internal sealed class UnitOfWork(SchedulerDbContext db) : IUnitOfWork
         }
         catch (DbUpdateConcurrencyException ex)
         {
+            // Also raised when a parallel cancel already deleted the slot rows (our DELETEs affect 0 rows).
             throw new ConcurrencyConflictException("The row was changed by another request.", ex);
         }
         catch (Exception ex) when (SqlErrorClassifier.Classify(ex) == SqlErrorKind.Transient)

@@ -10,10 +10,10 @@ internal sealed class IdempotencyStore(SchedulerDbContext db) : IIdempotencyStor
     public Task<IdempotencyRecord?> FindAsync(string key, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(key);
-        return db.IdempotencyKeys
+        return DbCall.RunAsync(() => db.IdempotencyKeys
             .AsNoTracking()
             .Where(k => k.Key == key)
             .Select(k => new IdempotencyRecord(k.Key, k.RequestHash, k.AppointmentId, k.ResponseJson, k.CreatedUtc))
-            .FirstOrDefaultAsync(cancellationToken);
+            .FirstOrDefaultAsync(cancellationToken));
     }
 }
