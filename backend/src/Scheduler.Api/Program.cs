@@ -55,7 +55,12 @@ builder.Services
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
-    options.SwaggerDoc("v1", new() { Title = "Unified Service Scheduler API", Version = "v1" });
+    options.SwaggerDoc("v1", new()
+    {
+        Title = "Unified Service Scheduler API",
+        Version = "v1",
+        Description = SwaggerText.Description,
+    });
     var xmlFile = Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml");
     if (File.Exists(xmlFile))
     {
