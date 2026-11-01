@@ -82,6 +82,17 @@ public class DealershipTests
     }
 
     [Fact]
+    public void Unknown_stored_time_zone_is_broken_data_not_a_client_error()
+    {
+        var dealership = Seed.District1();
+        typeof(Dealership).GetProperty(nameof(Dealership.TimeZoneId))!.SetValue(dealership, "Mars/Olympus_Mons");
+
+        var act = () => dealership.IsOpenFor(TimeRange.Create(Utc.At(3, 0), Utc.At(4, 0)));
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*Mars/Olympus_Mons*");
+    }
+
+    [Fact]
     public void Create_rejects_close_not_after_open()
     {
         var act = () => Dealership.Create("X", Seed.HoChiMinh, new TimeOnly(17, 0), new TimeOnly(8, 0));

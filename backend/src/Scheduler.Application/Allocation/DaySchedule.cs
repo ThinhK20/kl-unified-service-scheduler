@@ -18,6 +18,8 @@ public sealed class DaySchedule
     private readonly IReadOnlyList<ServiceBay> _serviceBays;
     private readonly HashSet<(ResourceType Type, int Id, DateTime SlotStartUtc)> _taken;
     private readonly IReadOnlyDictionary<int, int> _confirmedCounts;
+    private readonly IReadOnlyList<Technician> _dealershipTechnicians;
+    private readonly IReadOnlyList<ServiceType> _activeServiceTypes;
     private readonly IResourceAllocationStrategy _strategy;
 
     internal DaySchedule(
@@ -28,6 +30,8 @@ public sealed class DaySchedule
         IReadOnlyList<ServiceBay> serviceBays,
         IReadOnlyList<TakenSlot> takenSlots,
         IReadOnlyDictionary<int, int> confirmedCounts,
+        IReadOnlyList<Technician> dealershipTechnicians,
+        IReadOnlyList<ServiceType> activeServiceTypes,
         IResourceAllocationStrategy strategy)
     {
         _dealership = dealership;
@@ -39,6 +43,8 @@ public sealed class DaySchedule
             .Select(s => (s.ResourceType, s.ResourceId, UtcTime.Normalize(s.SlotStartUtc)))
             .ToHashSet();
         _confirmedCounts = confirmedCounts;
+        _dealershipTechnicians = dealershipTechnicians;
+        _activeServiceTypes = activeServiceTypes;
         _strategy = strategy;
     }
 
@@ -72,7 +78,8 @@ public sealed class DaySchedule
             return [];
         }
 
-        return _strategy.Order(new AllocationRequest(_serviceType, technicians, bays, _confirmedCounts));
+        return _strategy.Order(new AllocationRequest(
+            _serviceType, technicians, bays, _confirmedCounts, _dealershipTechnicians, _activeServiceTypes));
     }
 
     /// <summary>
@@ -90,11 +97,19 @@ public sealed class DaySchedule
     /// <summary>
     /// Up to <paramref name="max"/> free start times nearest to <paramref name="requestedStartUtc"/> (an earlier time
     /// wins a tie), excluding the requested time itself, returned in ascending order.
+    /// Ranges that touch any of <paramref name="busySlotStartsUtc"/> (for example the customer's car is booked
+    /// elsewhere) are skipped.
     /// </summary>
-    public IReadOnlyList<DateTime> SuggestStartTimes(DateTime requestedStartUtc, DateTime afterUtc, int max)
+    public IReadOnlyList<DateTime> SuggestStartTimes(
+        DateTime requestedStartUtc,
+        DateTime afterUtc,
+        int max,
+        IReadOnlyCollection<DateTime>? busySlotStartsUtc = null)
     {
         var requested = UtcTime.Normalize(requestedStartUtc);
+        var busy = (busySlotStartsUtc ?? []).Select(UtcTime.Normalize).ToHashSet();
         return FreeRanges(afterUtc)
+            .Where(range => busy.Count == 0 || !SlotGrid.Split(range).Any(busy.Contains))
             .Select(range => range.StartUtc)
             .Where(start => start != requested)
             .OrderBy(start => (start - requested).Duration())

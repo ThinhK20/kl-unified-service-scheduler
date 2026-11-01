@@ -8,6 +8,9 @@ namespace Scheduler.IntegrationTests.Persistence;
 /// <summary>Loads seeded entities and builds an appointment with the domain factory.</summary>
 internal static class AppointmentFactory
 {
+    /// <summary>Slot rows per 15 minutes: one each for the technician, the bay and the vehicle (SPEC 0c).</summary>
+    public const int RowsPerSlot = 3;
+
     /// <summary>Ho Chi Minh City is UTC+7 all year (no daylight saving).</summary>
     public static DateTime LocalToUtc(DateOnly date, int hour, int minute = 0) =>
         new DateTime(date, new TimeOnly(hour, minute), DateTimeKind.Utc).AddHours(-7);

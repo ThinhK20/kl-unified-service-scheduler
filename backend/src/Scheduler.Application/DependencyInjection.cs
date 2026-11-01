@@ -17,7 +17,7 @@ public static class DependencyInjection
 
         services.AddValidatorsFromAssemblyContaining<BookAppointmentValidator>(ServiceLifetime.Scoped);
 
-        services.AddSingleton<IResourceAllocationStrategy, LeastQualifiedFirstStrategy>();
+        services.AddSingleton<IResourceAllocationStrategy, ScarcityAwareStrategy>();
         services.AddScoped<AvailabilityService>();
 
         services.AddScoped<BookAppointmentHandler>();

@@ -26,7 +26,7 @@ public sealed class AppointmentsController : ControllerBase
     /// <response code="201">Booked (or the saved response of an earlier identical request). Location points to the appointment.</response>
     /// <response code="400">Missing field or header, bad format, not on the 15-minute grid, or in the past.</response>
     /// <response code="404">Unknown customer, vehicle, dealership or service type.</response>
-    /// <response code="409">NO_AVAILABILITY (with suggestedStartTimes) or IDEMPOTENCY_CONFLICT.</response>
+    /// <response code="409">NO_AVAILABILITY (with suggestedStartTimes), VEHICLE_ALREADY_BOOKED or IDEMPOTENCY_CONFLICT.</response>
     /// <response code="422">A booking rule is broken, for example outside opening hours.</response>
     /// <response code="503">The database is busy. Retry with the same Idempotency-Key.</response>
     [HttpPost]
@@ -90,13 +90,13 @@ public sealed class AppointmentsController : ControllerBase
         return this.ToActionResult(result, appointment => Ok(appointment));
     }
 
-    /// <summary>Cancels a confirmed appointment and frees its technician and bay.</summary>
+    /// <summary>Cancels a confirmed appointment that has not started yet, and frees its technician, bay and vehicle.</summary>
     /// <param name="id">Appointment id.</param>
     /// <param name="handler">Use case handler (injected).</param>
     /// <param name="cancellationToken">Request cancellation.</param>
     /// <response code="200">The cancelled appointment.</response>
     /// <response code="404">Unknown appointment.</response>
-    /// <response code="409">APPOINTMENT_NOT_CANCELLABLE: it is not Confirmed.</response>
+    /// <response code="409">APPOINTMENT_NOT_CANCELLABLE: it is not Confirmed, or it has already started.</response>
     /// <response code="503">The database is busy. Try again.</response>
     [HttpPost("{id:int}/cancel")]
     [ProducesResponseType<AppointmentDto>(StatusCodes.Status200OK)]

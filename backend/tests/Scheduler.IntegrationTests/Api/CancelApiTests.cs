@@ -17,7 +17,7 @@ public sealed class CancelApiTests(SqlServerFixture fixture)
     {
         var day = TestDays.CancelAndRebook;
         var booked = await _client.BookOkAsync(BrakeInspection, LocalIso(day, 13));
-        (await CountSlotsAsync(booked.Id)).Should().Be(12);
+        (await CountSlotsAsync(booked.Id)).Should().Be(18); // 6 slots x (technician + bay + vehicle)
 
         using var cancel = await _client.PostAsync($"/api/appointments/{booked.Id}/cancel", content: null);
 
@@ -46,6 +46,29 @@ public sealed class CancelApiTests(SqlServerFixture fixture)
 
         second.StatusCode.Should().Be(HttpStatusCode.Conflict);
         (await second.ReadProblemAsync()).Code().Should().Be("APPOINTMENT_NOT_CANCELLABLE");
+    }
+
+    [Fact]
+    public async Task Cancel_after_the_start_is_409_not_cancellable()
+    {
+        var day = TestDays.CancelAfterStart;
+        var factory = SchedulerApiFactory.For(fixture);
+        var booked = await _client.BookOkAsync(BrakeInspection, LocalIso(day, 9));
+        factory.Clock.UtcNow = LocalToUtc(day, 9, 30);
+        try
+        {
+            using var response = await _client.PostAsync($"/api/appointments/{booked.Id}/cancel", null);
+
+            response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+            var problem = await response.ReadProblemAsync();
+            problem.Code().Should().Be("APPOINTMENT_NOT_CANCELLABLE");
+            problem.GetProperty("detail").GetString().Should().Be("This appointment has already started or passed.");
+            (await CountSlotsAsync(booked.Id)).Should().Be(18);
+        }
+        finally
+        {
+            factory.Clock.UtcNow = FixedClock.DefaultNow;
+        }
     }
 
     [Fact]

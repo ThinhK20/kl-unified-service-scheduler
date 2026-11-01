@@ -1,7 +1,8 @@
 # Unified Service Scheduler - walkthrough requests (Visual Studio, Rider, VS Code REST Client).
-# Start the API first (http://localhost:5080). Change @day to a future date.
-# Requests 4-12 follow the README walkthrough; run them in order.
-# Keys are fixed so the replay/conflict steps work. On a second run, change @day (or the keys).
+# Start the API first (http://localhost:5080).
+# @day is an example date: pick any FUTURE date (the README responses were captured with 2026-11-10).
+# Requests 4-13 follow the README walkthrough; run them in order.
+# The Idempotency-Keys contain @day, so a run with another date never collides with an earlier run.
 
 @api = http://localhost:5080
 @day = 2026-11-10
@@ -19,46 +20,53 @@ GET {{api}}/api/dealerships/1/availability?serviceTypeId=2&date={{day}}
 # @name book
 POST {{api}}/api/appointments
 Content-Type: application/json
-Idempotency-Key: demo-key-1
+Idempotency-Key: demo-{{day}}-1
 
 { "customerId": 1, "vehicleId": 1, "dealershipId": 1, "serviceTypeId": 2, "startTime": "{{day}}T13:00:00+07:00" }
 
 ### 5. Same key + same body again -> the same 201 response, no second booking
 POST {{api}}/api/appointments
 Content-Type: application/json
-Idempotency-Key: demo-key-1
+Idempotency-Key: demo-{{day}}-1
 
 { "customerId": 1, "vehicleId": 1, "dealershipId": 1, "serviceTypeId": 2, "startTime": "{{day}}T13:00:00+07:00" }
 
-### 6. Same slot, new key -> 409 NO_AVAILABILITY with suggestedStartTimes
+### 6. Same slot, another car, new key -> 409 NO_AVAILABILITY with suggestedStartTimes
 POST {{api}}/api/appointments
 Content-Type: application/json
-Idempotency-Key: demo-key-2
+Idempotency-Key: demo-{{day}}-2
 
-{ "customerId": 1, "vehicleId": 1, "dealershipId": 1, "serviceTypeId": 2, "startTime": "{{day}}T13:00:00+07:00" }
+{ "customerId": 1, "vehicleId": 2, "dealershipId": 1, "serviceTypeId": 2, "startTime": "{{day}}T13:00:00+07:00" }
+
+### 6b. Same car at another dealership at the same time -> 409 VEHICLE_ALREADY_BOOKED
+POST {{api}}/api/appointments
+Content-Type: application/json
+Idempotency-Key: demo-{{day}}-vehicle
+
+{ "customerId": 1, "vehicleId": 1, "dealershipId": 2, "serviceTypeId": 5, "startTime": "{{day}}T13:00:00+07:00" }
 
 ### 7. Same key, different body -> 409 IDEMPOTENCY_CONFLICT
 POST {{api}}/api/appointments
 Content-Type: application/json
-Idempotency-Key: demo-key-1
+Idempotency-Key: demo-{{day}}-1
 
 { "customerId": 1, "vehicleId": 1, "dealershipId": 1, "serviceTypeId": 2, "startTime": "{{day}}T14:00:00+07:00" }
 
 ### 8. Ends after closing time (16:00 + 90 min) -> 422 BOOKING_RULE_VIOLATION
 POST {{api}}/api/appointments
 Content-Type: application/json
-Idempotency-Key: demo-key-3
+Idempotency-Key: demo-{{day}}-3
 
-{ "customerId": 1, "vehicleId": 1, "dealershipId": 1, "serviceTypeId": 2, "startTime": "{{day}}T16:00:00+07:00" }
+{ "customerId": 1, "vehicleId": 2, "dealershipId": 1, "serviceTypeId": 2, "startTime": "{{day}}T16:00:00+07:00" }
 
 ### 9. Not on the 15-minute grid -> 400 INVALID_REQUEST
 POST {{api}}/api/appointments
 Content-Type: application/json
-Idempotency-Key: demo-key-4
+Idempotency-Key: demo-{{day}}-4
 
-{ "customerId": 1, "vehicleId": 1, "dealershipId": 1, "serviceTypeId": 2, "startTime": "{{day}}T10:10:00+07:00" }
+{ "customerId": 1, "vehicleId": 2, "dealershipId": 1, "serviceTypeId": 2, "startTime": "{{day}}T10:10:00+07:00" }
 
-### 10. Cancel the booking from step 4 -> 200 Cancelled
+### 10. Cancel the booking from step 4 -> 200 Cancelled (only before it starts)
 POST {{api}}/api/appointments/{{book.response.body.$.id}}/cancel
 
 ### 11. Cancel again -> 409 APPOINTMENT_NOT_CANCELLABLE
@@ -67,7 +75,7 @@ POST {{api}}/api/appointments/{{book.response.body.$.id}}/cancel
 ### 12. Rebook the freed slot with a new key -> 201 Created
 POST {{api}}/api/appointments
 Content-Type: application/json
-Idempotency-Key: demo-key-5
+Idempotency-Key: demo-{{day}}-5
 
 { "customerId": 1, "vehicleId": 1, "dealershipId": 1, "serviceTypeId": 2, "startTime": "{{day}}T13:00:00+07:00" }
 

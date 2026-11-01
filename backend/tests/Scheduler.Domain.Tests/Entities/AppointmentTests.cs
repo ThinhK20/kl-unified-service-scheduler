@@ -45,12 +45,16 @@ public class AppointmentTests
     }
 
     [Fact]
-    public void Create_reserves_4_technician_slots_and_4_bay_slots_for_60_minutes()
+    public void Create_reserves_4_technician_4_bay_and_4_vehicle_slots_for_60_minutes()
     {
         var appointment = Create();
 
         var expectedStarts = new[] { Start, Start.AddMinutes(15), Start.AddMinutes(30), Start.AddMinutes(45) };
-        appointment.ResourceSlots.Should().HaveCount(8);
+        appointment.ResourceSlots.Should().HaveCount(12);
+        appointment.ResourceSlots.Where(s => s.ResourceType == ResourceType.Vehicle)
+            .Select(s => s.SlotStartUtc).Should().Equal(expectedStarts);
+        appointment.ResourceSlots.Where(s => s.ResourceType == ResourceType.Vehicle)
+            .Should().OnlyContain(s => s.ResourceId == _vehicle.Id);
         appointment.ResourceSlots.Where(s => s.ResourceType == ResourceType.Technician)
             .Select(s => s.SlotStartUtc).Should().Equal(expectedStarts);
         appointment.ResourceSlots.Where(s => s.ResourceType == ResourceType.Bay)
@@ -164,7 +168,7 @@ public class AppointmentTests
     {
         var appointment = Create();
 
-        appointment.Cancel();
+        appointment.Cancel(Now);
 
         appointment.Status.Should().Be(AppointmentStatus.Cancelled);
         appointment.ResourceSlots.Should().BeEmpty();
@@ -175,11 +179,43 @@ public class AppointmentTests
     public void Cancel_twice_is_rejected_with_not_cancellable()
     {
         var appointment = Create();
-        appointment.Cancel();
+        appointment.Cancel(Now);
 
-        var act = () => appointment.Cancel();
+        var act = () => appointment.Cancel(Now);
 
         act.Should().Throw<DomainException>().Which.Code.Should().Be(DomainErrorCodes.AppointmentNotCancellable);
+    }
+
+    [Fact]
+    public void Cancel_after_the_start_is_rejected_with_not_cancellable()
+    {
+        var appointment = Create();
+
+        var act = () => appointment.Cancel(Start.AddMinutes(10));
+
+        act.Should().Throw<DomainException>().Which.Error.Should().Be(DomainErrors.Appointment.AlreadyStarted);
+        appointment.Status.Should().Be(AppointmentStatus.Confirmed);
+        appointment.ResourceSlots.Should().HaveCount(12);
+    }
+
+    [Fact]
+    public void Cancel_exactly_at_the_start_is_rejected()
+    {
+        var appointment = Create();
+
+        var act = () => appointment.Cancel(Start);
+
+        act.Should().Throw<DomainException>().Which.Code.Should().Be(DomainErrorCodes.AppointmentNotCancellable);
+    }
+
+    [Fact]
+    public void Cancel_one_minute_before_the_start_is_allowed()
+    {
+        var appointment = Create();
+
+        appointment.Cancel(Start.AddMinutes(-1));
+
+        appointment.Status.Should().Be(AppointmentStatus.Cancelled);
     }
 
     [Fact]

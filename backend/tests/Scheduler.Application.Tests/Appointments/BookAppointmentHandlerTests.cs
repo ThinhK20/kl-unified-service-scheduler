@@ -51,7 +51,7 @@ public class BookAppointmentHandlerTests
         await Book(BrakeInspection, Local.Iso(13));
 
         var saved = _app.Data.Appointments.Single();
-        saved.ResourceSlots.Should().HaveCount(12); // 90 min = 6 slots x (technician + bay)
+        saved.ResourceSlots.Should().HaveCount(18); // 90 min = 6 slots x (technician + bay + vehicle)
         saved.RequiredSkillSnapshot.Should().Be(Skill.Brakes);
         saved.RequiredBayTypeSnapshot.Should().Be(BayType.Lift);
         saved.CreatedUtc.Should().Be(_app.Clock.UtcNow);
@@ -66,7 +66,7 @@ public class BookAppointmentHandlerTests
 
         // Lan is busy now; only the inactive Tuan would qualify.
         _app.Data.ServiceBays.Add(Domain.Entities.ServiceBay.Create(1, "Spare EV bay", BayType.EV).WithId(6));
-        var second = await Book(EvBatteryCheck, Local.Iso(10), key: "b");
+        var second = await Book(EvBatteryCheck, Local.Iso(10), key: "b", vehicleId: 2);
 
         second.Error!.Code.Should().Be(ErrorCodes.NoAvailability);
     }
@@ -78,7 +78,7 @@ public class BookAppointmentHandlerTests
         await Book(BrakeInspection, Local.Iso(13), key: "a");
 
         // Nam is free and qualified, but no lift bay is free.
-        var result = await Book(BrakeInspection, Local.Iso(13), key: "b");
+        var result = await Book(BrakeInspection, Local.Iso(13), key: "b", vehicleId: 2);
 
         result.Error!.Code.Should().Be(ErrorCodes.NoAvailability);
         _app.Appointments.AddCalls.Should().Be(1, "no pair should even be tried");
@@ -91,7 +91,7 @@ public class BookAppointmentHandlerTests
         _app.Data.ServiceBays.Add(Domain.Entities.ServiceBay.Create(1, "Bay 5", BayType.Lift).WithId(7));
         (await Book(BrakeInspection, Local.Iso(9), key: "a")).Value.Appointment.Technician.Name.Should().Be("Nam");
 
-        var result = await Book(BrakeInspection, Local.Iso(9), key: "b");
+        var result = await Book(BrakeInspection, Local.Iso(9), key: "b", vehicleId: 2);
 
         result.Error!.Code.Should().Be(ErrorCodes.NoAvailability);
     }
@@ -108,9 +108,10 @@ public class BookAppointmentHandlerTests
     [Fact]
     public async Task Fewest_confirmed_appointments_that_day_breaks_a_tier_tie()
     {
-        // Binh (Id 8) is a second General Trainee working all day, like Minh (Id 3) from 12:00.
+        // Binh (Id 8) has Minh's skills (General Trainee, Brakes Qualified) and works all day; Minh (Id 3) from 12:00.
+        // Same skills, so the scarcity rules tie too.
         _app.Data.Technicians.Add(Domain.Entities.Technician.Create(1, "Binh", new TimeOnly(8, 0), new TimeOnly(17, 0))
-            .WithSkill(Skill.General, SkillTier.Trainee).WithId(8));
+            .WithSkill(Skill.General, SkillTier.Trainee).WithSkill(Skill.Brakes, SkillTier.Qualified).WithId(8));
 
         // Same tier, both 0 appointments: lower Id wins.
         (await Book(OilChange, Local.Iso(13), key: "a")).Value.Appointment.Technician.Name.Should().Be("Minh");
@@ -123,7 +124,7 @@ public class BookAppointmentHandlerTests
     public async Task Cancelled_appointments_do_not_count_for_the_tie_break()
     {
         _app.Data.Technicians.Add(Domain.Entities.Technician.Create(1, "Binh", new TimeOnly(8, 0), new TimeOnly(17, 0))
-            .WithSkill(Skill.General, SkillTier.Trainee).WithId(8));
+            .WithSkill(Skill.General, SkillTier.Trainee).WithSkill(Skill.Brakes, SkillTier.Qualified).WithId(8));
         var first = await Book(OilChange, Local.Iso(13), key: "a");
         await _app.CancelHandler().HandleAsync(new(first.Value.Appointment.Id), CancellationToken.None);
 
@@ -154,6 +155,76 @@ public class BookAppointmentHandlerTests
         _app.Appointments.AddCalls.Should().Be(2);
     }
 
+    // ---------- Vehicle is a reserved resource ----------
+
+    [Fact]
+    public async Task Same_vehicle_overlapping_at_another_dealership_is_vehicle_already_booked()
+    {
+        await Book(OilChange, Local.Iso(10), key: "a"); // vehicle 1 at District 1, 10:00-11:00
+
+        // Thu Duc has a free technician and bay, but the car is busy.
+        var result = await Book(OilChangeThuDuc, Local.Iso(10, 30), key: "b", dealershipId: 2);
+
+        result.Error!.Code.Should().Be(ErrorCodes.VehicleAlreadyBooked);
+        result.Error.SuggestedStartTimes.Should().BeEmpty();
+        _app.Appointments.AddCalls.Should().Be(1, "no pair is tried when the car is busy");
+    }
+
+    [Fact]
+    public async Task Same_vehicle_right_after_its_booking_is_allowed()
+    {
+        await Book(OilChange, Local.Iso(10), key: "a");
+
+        var result = await Book(OilChangeThuDuc, Local.Iso(11), key: "b", dealershipId: 2);
+
+        result.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Other_vehicle_at_the_same_time_is_not_blocked_by_the_vehicle_rule()
+    {
+        await Book(OilChange, Local.Iso(10), key: "a");
+
+        var result = await Book(OilChangeThuDuc, Local.Iso(10), key: "b", vehicleId: 2, dealershipId: 2);
+
+        result.IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Vehicle_taken_by_a_twin_booking_during_the_save_is_vehicle_already_booked_without_trying_more_pairs()
+    {
+        // Our pre-check sees the car free. Then a twin booking of the same car commits first, so our insert fails
+        // on a slot: the handler re-checks the vehicle and stops instead of trying Nam next.
+        _app.Appointments.BeforeNextAdd = () =>
+        {
+            var twin = Domain.Entities.Appointment.Create(
+                1, _app.Data.Vehicles[0], _app.Data.GetDealership(2), _app.Data.GetServiceType(OilChangeThuDuc),
+                _app.Data.GetTechnician(4), _app.Data.ServiceBays.Single(b => b.Id == 4), Local.Utc(13), _app.Clock.UtcNow);
+            _app.Data.Appointments.Add(twin.WithId(999));
+        };
+
+        var result = await Book(BrakeInspection, Local.Iso(13));
+
+        result.Error!.Code.Should().Be(ErrorCodes.VehicleAlreadyBooked);
+        _app.Appointments.AddCalls.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Same_key_twin_that_took_the_vehicle_after_our_idempotency_check_is_replayed_not_rejected()
+    {
+        // The twin (same key, same body) commits between our step 2 and the vehicle pre-check.
+        var winner = await Book(OilChange, Local.Iso(9), key: "same");
+        var record = _app.Data.IdempotencyKeys["same"];
+        var reads = 0;
+        var store = new KeyAppearsAfterInsert(() => ++reads == 1 ? null : record);
+
+        var result = await _app.BookHandler(store).HandleAsync(TestApp.Command(OilChange, Local.Iso(9), "same"), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue(result.Error?.Code);
+        result.Value.IsReplay.Should().BeTrue();
+        result.Value.Appointment.Id.Should().Be(winner.Value.Appointment.Id);
+    }
+
     // ---------- Suggestions ----------
 
     [Fact]
@@ -162,7 +233,7 @@ public class BookAppointmentHandlerTests
         // Bay 2 (only lift bay) is busy 13:00-14:30 local.
         await Book(BrakeInspection, Local.Iso(13), key: "a");
 
-        var result = await Book(BrakeInspection, Local.Iso(13, 30), key: "b");
+        var result = await Book(BrakeInspection, Local.Iso(13, 30), key: "b", vehicleId: 2);
 
         result.Error!.Code.Should().Be(ErrorCodes.NoAvailability);
         // Free starts: ... 11:30 (120 min away) | 14:30 (60), 14:45 (75), 15:00 (90), 15:15, 15:30.
@@ -181,9 +252,25 @@ public class BookAppointmentHandlerTests
             await _app.BookAsync(BrakeInspection, Local.Iso(int.Parse(parts[0]), int.Parse(parts[1])), $"k{i++}");
         }
 
-        var result = await Book(BrakeInspection, Local.Iso(14), key: "late");
+        var result = await Book(BrakeInspection, Local.Iso(14), key: "late", vehicleId: 2);
 
         result.Error!.SuggestedStartTimes.Should().Equal(Local.Utc(15, 30));
+    }
+
+    [Fact]
+    public async Task Suggestions_skip_times_when_the_customers_car_is_busy_elsewhere()
+    {
+        // Bay 2 (only lift bay) is busy 13:00-14:30 with another car.
+        await Book(BrakeInspection, Local.Iso(13), key: "a", vehicleId: 2);
+        // Our car (vehicle 1) has an oil change at Thu Duc 15:30-16:30.
+        await Book(OilChangeThuDuc, Local.Iso(15, 30), key: "b", dealershipId: 2);
+
+        // 13:30-15:00 does not touch the car's booking, so the pre-check passes; no lift bay is free.
+        var result = await Book(BrakeInspection, Local.Iso(13, 30), key: "c");
+
+        result.Error!.Code.Should().Be(ErrorCodes.NoAvailability);
+        // Without the car rule: 14:30, 14:45, 15:00. Those overlap 15:30-16:30, so earlier times are offered.
+        result.Error.SuggestedStartTimes.Should().Equal(Local.Utc(11), Local.Utc(11, 15), Local.Utc(11, 30));
     }
 
     [Fact]
@@ -193,7 +280,7 @@ public class BookAppointmentHandlerTests
         _app.Clock.UtcNow = Local.Utc(10, 20);
         await Book(BrakeInspection, Local.Iso(11), key: "a");
 
-        var result = await Book(BrakeInspection, Local.Iso(11), key: "b");
+        var result = await Book(BrakeInspection, Local.Iso(11), key: "b", vehicleId: 2);
 
         result.Error!.SuggestedStartTimes.Should().OnlyContain(t => t > _app.Clock.UtcNow);
         result.Error.SuggestedStartTimes.Should().Equal(Local.Utc(12, 30), Local.Utc(12, 45), Local.Utc(13, 0));
@@ -354,6 +441,18 @@ public class BookAppointmentHandlerTests
         var result = await Book(OilChange, Local.Iso(10));
 
         result.Error!.Code.Should().Be(ErrorCodes.BookingRuleViolation);
+    }
+
+    [Theory]
+    [InlineData("9999-12-31T23:45:00Z")]
+    [InlineData("9999-12-31T23:45:00+07:00")]
+    [InlineData("1999-12-31T23:45:00Z")]
+    public async Task Start_outside_the_technical_year_bound_is_invalid_not_a_crash(string startTime)
+    {
+        var result = await Book(OilChange, startTime);
+
+        result.Error!.Code.Should().Be(ErrorCodes.InvalidRequest);
+        result.Error.FieldErrors["startTime"].Should().Equal("startTime must be between the years 2000 and 9998.");
     }
 
     [Fact]

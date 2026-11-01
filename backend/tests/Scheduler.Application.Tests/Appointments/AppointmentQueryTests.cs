@@ -94,6 +94,9 @@ public class AppointmentQueryTests
     [InlineData("10/11/2026")]
     [InlineData("2026-11-10T00:00:00Z")]
     [InlineData("2026-02-30")]
+    [InlineData("9999-12-31")]
+    [InlineData("1999-12-31")]
+    [InlineData("0001-01-01")]
     public async Task Availability_bad_date_is_invalid(string? date)
     {
         var result = await Availability(1, OilChange, date);

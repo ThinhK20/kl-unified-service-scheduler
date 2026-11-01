@@ -32,7 +32,7 @@ public sealed class AppointmentPersistenceTests(SqlServerFixture fixture)
         {
             var appointment = await AppointmentFactory.CreateAsync(db, BrakeInspection, Nam, Bay2, start);
             db.Appointments.Add(appointment);
-            (await db.SaveChangesAsync()).Should().Be(1 + (2 * (90 / 15)));
+            (await db.SaveChangesAsync()).Should().Be(1 + (AppointmentFactory.RowsPerSlot * (90 / 15)));
             id = appointment.Id;
             id.Should().BePositive();
             appointment.RowVersion.Should().NotBeEmpty();
@@ -51,7 +51,7 @@ public sealed class AppointmentPersistenceTests(SqlServerFixture fixture)
             saved.RequiredSkillSnapshot.Should().Be(Skill.Brakes);
             saved.RequiredBayTypeSnapshot.Should().Be(BayType.Lift);
 
-            saved.ResourceSlots.Should().HaveCount(12);
+            saved.ResourceSlots.Should().HaveCount(AppointmentFactory.RowsPerSlot * 6);
             saved.ResourceSlots.Should().OnlyContain(s => s.SlotStartUtc.Kind == DateTimeKind.Utc);
             saved.ResourceSlots.Where(s => s.ResourceType == ResourceType.Technician)
                 .Select(s => s.SlotStartUtc).Should().BeEquivalentTo(Enumerable.Range(0, 6).Select(i => start.AddMinutes(15 * i)));
@@ -73,8 +73,8 @@ public sealed class AppointmentPersistenceTests(SqlServerFixture fixture)
 
         await using (var db = fixture.CreateDbContext())
         {
-            // Nam + Bay 2, 10:45-11:15 local: only the 10:45 technician slot clashes; the bay is free.
-            var clash = await AppointmentFactory.CreateAsync(db, TyreRotation, Nam, Bay2, AppointmentFactory.LocalToUtc(day, 10, 45));
+            // Nam + Bay 2 + the other vehicle, 10:45-11:15 local: only the 10:45 technician slot clashes.
+            var clash = await AppointmentFactory.CreateAsync(db, TyreRotation, Nam, Bay2, AppointmentFactory.LocalToUtc(day, 10, 45), vehicleId: 2);
             db.Appointments.Add(clash);
 
             var act = () => db.SaveChangesAsync();
@@ -90,7 +90,7 @@ public sealed class AppointmentPersistenceTests(SqlServerFixture fixture)
             var dayStart = AppointmentFactory.LocalToUtc(day, 0);
             var dayEnd = dayStart.AddDays(1);
             (await check.Appointments.CountAsync(a => a.StartUtc >= dayStart && a.StartUtc < dayEnd)).Should().Be(1);
-            (await check.ResourceSlots.CountAsync(s => s.SlotStartUtc >= dayStart && s.SlotStartUtc < dayEnd)).Should().Be(8);
+            (await check.ResourceSlots.CountAsync(s => s.SlotStartUtc >= dayStart && s.SlotStartUtc < dayEnd)).Should().Be(AppointmentFactory.RowsPerSlot * 4);
             (await check.ResourceSlots.CountAsync(s =>
                 s.ResourceType == ResourceType.Bay && s.ResourceId == Bay2 && s.SlotStartUtc >= dayStart && s.SlotStartUtc < dayEnd))
                 .Should().Be(0);
@@ -111,7 +111,7 @@ public sealed class AppointmentPersistenceTests(SqlServerFixture fixture)
 
         await act.Should().NotThrowAsync();
         var dayStart = AppointmentFactory.LocalToUtc(day, 0);
-        (await db.ResourceSlots.CountAsync(s => s.SlotStartUtc >= dayStart && s.SlotStartUtc < dayStart.AddDays(1))).Should().Be(16);
+        (await db.ResourceSlots.CountAsync(s => s.SlotStartUtc >= dayStart && s.SlotStartUtc < dayStart.AddDays(1))).Should().Be(AppointmentFactory.RowsPerSlot * 8);
     }
 
     [Fact]
@@ -132,9 +132,9 @@ public sealed class AppointmentPersistenceTests(SqlServerFixture fixture)
         await using (var db = fixture.CreateDbContext())
         {
             var appointment = await db.Appointments.Include(a => a.ResourceSlots).SingleAsync(a => a.Id == id);
-            appointment.ResourceSlots.Should().HaveCount(8);
+            appointment.ResourceSlots.Should().HaveCount(AppointmentFactory.RowsPerSlot * 4);
 
-            appointment.Cancel();
+            appointment.Cancel(FixedClock.DefaultNow);
             await db.SaveChangesAsync();
         }
 
@@ -150,7 +150,7 @@ public sealed class AppointmentPersistenceTests(SqlServerFixture fixture)
             await db.SaveChangesAsync();
 
             rebooked.Id.Should().NotBe(id);
-            (await db.ResourceSlots.CountAsync(s => s.AppointmentId == rebooked.Id)).Should().Be(8);
+            (await db.ResourceSlots.CountAsync(s => s.AppointmentId == rebooked.Id)).Should().Be(AppointmentFactory.RowsPerSlot * 4);
         }
     }
 

@@ -47,6 +47,18 @@ public interface IAppointmentRepository
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// True when the vehicle has any slot row (ResourceType.Vehicle) with SlotStartUtc in <paramref name="rangeUtc"/>
+    /// (&gt;= start and &lt; end), that is: it already has a confirmed booking overlapping that time.
+    /// </summary>
+    Task<bool> IsVehicleBookedAsync(int vehicleId, TimeRange rangeUtc, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Start times of the vehicle's slot rows (ResourceType.Vehicle) with SlotStartUtc in <paramref name="windowUtc"/>
+    /// (&gt;= start and &lt; end), ascending. Used so suggestions never offer a time when the car is busy.
+    /// </summary>
+    Task<IReadOnlyList<DateTime>> GetVehicleSlotStartsAsync(int vehicleId, TimeRange windowUtc, CancellationToken cancellationToken);
+
+    /// <summary>
     /// For each technician, how many CONFIRMED appointments start in <paramref name="windowUtc"/>.
     /// Technicians with none may be left out of the dictionary.
     /// </summary>

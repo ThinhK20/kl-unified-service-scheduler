@@ -5,7 +5,7 @@ using Scheduler.Domain.ValueObjects;
 namespace Scheduler.Domain.Entities;
 
 /// <summary>
-/// One 15-minute slot of one resource (technician or bay) taken by an appointment.
+/// One 15-minute slot of one resource (technician, bay or vehicle) taken by an appointment.
 /// The database has a UNIQUE index on (ResourceType, ResourceId, SlotStartUtc), which makes double booking impossible.
 /// </summary>
 public sealed class ResourceSlot
@@ -18,7 +18,7 @@ public sealed class ResourceSlot
 
     public ResourceType ResourceType { get; private set; }
 
-    /// <summary>Technician id or service bay id, depending on <see cref="ResourceType"/>.</summary>
+    /// <summary>Technician id, service bay id or vehicle id, depending on <see cref="ResourceType"/>.</summary>
     public int ResourceId { get; private set; }
 
     /// <summary>Slot start, UTC, on the 15-minute grid.</summary>

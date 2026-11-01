@@ -10,6 +10,7 @@ public static class ErrorCodes
     public const string BookingRuleViolation = DomainErrorCodes.BookingRuleViolation;
     public const string NoAvailability = "NO_AVAILABILITY";
     public const string IdempotencyConflict = "IDEMPOTENCY_CONFLICT";
+    public const string VehicleAlreadyBooked = "VEHICLE_ALREADY_BOOKED";
     public const string AppointmentNotCancellable = DomainErrorCodes.AppointmentNotCancellable;
     public const string DatabaseBusy = "DATABASE_BUSY";
     public const string InternalError = "INTERNAL_ERROR";

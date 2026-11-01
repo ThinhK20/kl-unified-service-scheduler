@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Scheduler.Application.Abstractions;
 using Scheduler.Domain.Entities;
 using Scheduler.Domain.Enums;
@@ -7,12 +9,13 @@ using Scheduler.Infrastructure.Persistence;
 using Scheduler.Infrastructure.Seeding;
 using Scheduler.IntegrationTests.Infrastructure;
 using Scheduler.IntegrationTests.Persistence;
+using Xunit.Abstractions;
 
 namespace Scheduler.IntegrationTests.Repositories;
 
 /// <summary>Repository behaviour on a real SQL Server. Every test uses its own date in 2030.</summary>
 [Collection(SqlServerCollection.Name)]
-public sealed class AppointmentRepositoryTests(SqlServerFixture fixture) : IAsyncLifetime
+public sealed class AppointmentRepositoryTests(SqlServerFixture fixture, ITestOutputHelper output) : IAsyncLifetime
 {
     private const int OilChange = SeedData.ServiceTypeIds.OilChangeDistrict1; // 60 min, General, Standard
     private const int TyreRotation = SeedData.ServiceTypeIds.TyreRotation; // 30 min, Tyres, Lift
@@ -50,7 +53,7 @@ public sealed class AppointmentRepositoryTests(SqlServerFixture fixture) : IAsyn
 
         await using var db = fixture.CreateDbContext();
         var saved = await db.Appointments.Include(a => a.ResourceSlots).SingleAsync(a => a.StartUtc == start);
-        saved.ResourceSlots.Should().HaveCount(8);
+        saved.ResourceSlots.Should().HaveCount(AppointmentFactory.RowsPerSlot * 4);
 
         await using var read = _harness.CreateScope();
         var record = await read.Idempotency.FindAsync(key, CancellationToken.None);
@@ -71,8 +74,8 @@ public sealed class AppointmentRepositoryTests(SqlServerFixture fixture) : IAsyn
 
         await using (var scope = _harness.CreateScope())
         {
-            // Nam is busy 10:00-11:00; this tyre rotation needs him at 10:30.
-            var clash = await scope.NewAppointmentAsync(TyreRotation, Nam, Bay2, AppointmentFactory.LocalToUtc(day, 10, 30));
+            // Nam is busy 10:00-11:00; this tyre rotation (other vehicle, free bay) needs him at 10:30.
+            var clash = await scope.NewAppointmentAsync(TyreRotation, Nam, Bay2, AppointmentFactory.LocalToUtc(day, 10, 30), vehicleId: 2);
             var result = await scope.Appointments.TryAddWithSlotsAsync(clash, Entry(key), CancellationToken.None);
 
             result.IsFailure.Should().BeTrue();
@@ -122,10 +125,10 @@ public sealed class AppointmentRepositoryTests(SqlServerFixture fixture) : IAsyn
         {
             var repository = scope.Appointments;
 
-            var first = await scope.NewAppointmentAsync(TyreRotation, Nam, Bay2, start);
+            var first = await scope.NewAppointmentAsync(TyreRotation, Nam, Bay2, start, vehicleId: 2);
             (await repository.TryAddWithSlotsAsync(first, Entry(key), CancellationToken.None)).Error.Should().Be(RepositoryErrors.SlotTaken);
 
-            var next = await scope.NewAppointmentAsync(TyreRotation, Lan, Bay2, start);
+            var next = await scope.NewAppointmentAsync(TyreRotation, Lan, Bay2, start, vehicleId: 2);
             var result = await repository.TryAddWithSlotsAsync(next, Entry(key), CancellationToken.None);
 
             result.IsSuccess.Should().BeTrue();
@@ -135,7 +138,7 @@ public sealed class AppointmentRepositoryTests(SqlServerFixture fixture) : IAsyn
 
         await using var db = fixture.CreateDbContext();
         var saved = await db.Appointments.Include(a => a.ResourceSlots).SingleAsync(a => a.StartUtc == start && a.TechnicianId == Lan);
-        saved.ResourceSlots.Should().HaveCount(4);
+        saved.ResourceSlots.Should().HaveCount(AppointmentFactory.RowsPerSlot * 2);
         (await db.IdempotencyKeys.SingleAsync(k => k.Key == key)).AppointmentId.Should().Be(saved.Id);
     }
 
@@ -180,7 +183,7 @@ public sealed class AppointmentRepositoryTests(SqlServerFixture fixture) : IAsyn
         await using (var scope = _harness.CreateScope())
         {
             var toCancel = await scope.Appointments.GetForCancelAsync(cancelledId, CancellationToken.None);
-            toCancel!.Cancel();
+            toCancel!.Cancel(FixedClock.DefaultNow);
             await scope.UnitOfWork.SaveChangesAsync(CancellationToken.None);
         }
 
@@ -204,14 +207,14 @@ public sealed class AppointmentRepositoryTests(SqlServerFixture fixture) : IAsyn
             var appointment = await scope.Appointments.GetForCancelAsync(id, CancellationToken.None);
 
             appointment.Should().NotBeNull();
-            appointment!.ResourceSlots.Should().HaveCount(8);
+            appointment!.ResourceSlots.Should().HaveCount(AppointmentFactory.RowsPerSlot * 4);
             appointment.Vehicle.Should().NotBeNull();
             appointment.Dealership.Should().NotBeNull();
             appointment.ServiceType.Should().NotBeNull();
             appointment.Technician.Should().NotBeNull();
             appointment.ServiceBay.Should().NotBeNull();
 
-            appointment.Cancel();
+            appointment.Cancel(FixedClock.DefaultNow);
             await scope.UnitOfWork.SaveChangesAsync(CancellationToken.None);
         }
 
@@ -239,10 +242,10 @@ public sealed class AppointmentRepositoryTests(SqlServerFixture fixture) : IAsyn
         var a = await first.Appointments.GetForCancelAsync(id, CancellationToken.None);
         var b = await second.Appointments.GetForCancelAsync(id, CancellationToken.None);
 
-        a!.Cancel();
+        a!.Cancel(FixedClock.DefaultNow);
         await first.UnitOfWork.SaveChangesAsync(CancellationToken.None);
 
-        b!.Cancel();
+        b!.Cancel(FixedClock.DefaultNow);
         var act = () => second.UnitOfWork.SaveChangesAsync(CancellationToken.None);
         await act.Should().ThrowAsync<ConcurrencyConflictException>();
     }
@@ -269,6 +272,7 @@ public sealed class AppointmentRepositoryTests(SqlServerFixture fixture) : IAsyn
         const int requests = 10;
         var day = new DateOnly(2030, 4, 12);
         var start = AppointmentFactory.LocalToUtc(day, 11);
+        var logsBefore = _harness.Logs.Entries.Count;
 
         // Prepare every request (own scope = own DbContext) first, then fire them together.
         var scopes = new List<RepositoryScope>();
@@ -294,6 +298,14 @@ public sealed class AppointmentRepositoryTests(SqlServerFixture fixture) : IAsyn
             results.Count(r => r.IsSuccess).Should().Be(1);
             results.Where(r => r.IsFailure).Should().HaveCount(requests - 1)
                 .And.OnlyContain(r => r.Error == RepositoryErrors.SlotTaken);
+
+            // The 9 expected clashes must not page anyone: EF's SaveChangesFailed is logged at Debug, nothing at Error.
+            var logs = _harness.Logs.Entries.Skip(logsBefore).ToList();
+            var errors = logs.Count(e => e.Level >= LogLevel.Error);
+            var saveFailedDebug = logs.Count(e => e.EventId.Id == CoreEventId.SaveChangesFailed.Id && e.Level == LogLevel.Debug);
+            output.WriteLine($"Race logs: {errors} at Error or above, {saveFailedDebug} SaveChangesFailed at Debug");
+            errors.Should().Be(0);
+            saveFailedDebug.Should().Be(requests - 1);
         }
         finally
         {
@@ -305,8 +317,49 @@ public sealed class AppointmentRepositoryTests(SqlServerFixture fixture) : IAsyn
 
         await using var db = fixture.CreateDbContext();
         (await CountAppointmentsOnAsync(db, day)).Should().Be(1);
-        (await db.ResourceSlots.CountAsync(s => s.SlotStartUtc >= DayStart(day) && s.SlotStartUtc < DayStart(day).AddDays(1))).Should().Be(8);
+        (await db.ResourceSlots.CountAsync(s => s.SlotStartUtc >= DayStart(day) && s.SlotStartUtc < DayStart(day).AddDays(1))).Should().Be(AppointmentFactory.RowsPerSlot * 4);
     }
+
+    [Fact]
+    public async Task Idempotency_keys_are_case_sensitive()
+    {
+        var day = new DateOnly(2030, 4, 14);
+        var lower = "abc-" + NewKey();
+        var upper = lower.ToUpperInvariant();
+
+        await BookAsync(OilChange, Nam, Bay1, AppointmentFactory.LocalToUtc(day, 9), lower);
+        await BookAsync(OilChange, Nam, Bay1, AppointmentFactory.LocalToUtc(day, 11), upper);
+
+        await using var scope = _harness.CreateScope();
+        var lowerRecord = await scope.Idempotency.FindAsync(lower, CancellationToken.None);
+        var upperRecord = await scope.Idempotency.FindAsync(upper, CancellationToken.None);
+        lowerRecord.Should().NotBeNull();
+        upperRecord.Should().NotBeNull();
+        upperRecord!.AppointmentId.Should().NotBe(lowerRecord!.AppointmentId);
+        (await scope.Idempotency.FindAsync("Abc-" + lower[4..], CancellationToken.None)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task An_expected_slot_clash_is_not_logged_as_an_error()
+    {
+        var day = new DateOnly(2030, 4, 15);
+        var start = AppointmentFactory.LocalToUtc(day, 10);
+        await BookAsync(OilChange, Nam, Bay1, start);
+        var before = ErrorLogs().Count;
+
+        await using (var scope = _harness.CreateScope())
+        {
+            var clash = await scope.NewAppointmentAsync(OilChange, Nam, Bay1, start);
+            (await scope.Appointments.TryAddWithSlotsAsync(clash, Entry(NewKey()), CancellationToken.None))
+                .Error.Should().Be(RepositoryErrors.SlotTaken);
+        }
+
+        ErrorLogs().Skip(before).Select(e => $"{e.Category}/{e.EventId.Name}")
+            .Should().BeEmpty("a slot clash is a normal race and the repository handles it");
+    }
+
+    private List<CapturingLoggerProvider.LogEntry> ErrorLogs() =>
+        _harness.Logs.Entries.Where(e => e.Level >= LogLevel.Error).ToList();
 
     private const string Hash = "0000000000000000000000000000000000000000000000000000000000000000";
 

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Scheduler.Application.Abstractions;
 using Scheduler.Domain.Entities;
 using Scheduler.Infrastructure;
@@ -26,11 +27,14 @@ internal sealed class RepositoryHarness : IAsyncDisposable
             .Build();
 
         _services = new ServiceCollection()
-            .AddLogging()
+            .AddLogging(logging => logging.SetMinimumLevel(LogLevel.Trace).AddProvider(Logs))
             .AddSingleton<IConfiguration>(configuration)
             .AddInfrastructure(configuration)
             .BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
     }
+
+    /// <summary>Everything logged through this harness (EF Core included).</summary>
+    public CapturingLoggerProvider Logs { get; } = new();
 
     public RepositoryScope CreateScope() => new(_services.CreateAsyncScope());
 

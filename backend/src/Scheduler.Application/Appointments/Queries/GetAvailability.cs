@@ -21,6 +21,8 @@ public sealed class GetAvailabilityValidator : AbstractValidator<GetAvailability
             .Cascade(CascadeMode.Stop)
             .NotEmpty().WithMessage("date is required.")
             .Must(value => IsoDateTime.TryParseDate(value, out _)).WithMessage("date must be in the format YYYY-MM-DD.")
+            .Must(value => IsoDateTime.TryParseDate(value, out var date) && SupportedDates.Contains(date))
+            .WithMessage(SupportedDates.Message("date"))
             .OverridePropertyName("date");
     }
 }

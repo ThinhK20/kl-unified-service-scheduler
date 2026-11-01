@@ -35,6 +35,22 @@ This file is the contract every agent builds against. It restates the approved b
 - Infrastructure must NOT use EnableRetryOnFailure (explicit transactions + the handler's own single retry).
 - Idempotency save = one transaction, two SaveChanges: appointment + slots (gets Id), then the key row with ResponseJson.
 
+## 0c. Owner decisions after independent review (2026-11-01)
+- VEHICLE is a reserved resource too: `ResourceType.Vehicle`; each appointment writes vehicle slot rows (one per 15 min)
+  in the same transaction, protected by the same unique index. A vehicle that already has an overlapping Confirmed
+  appointment (any dealership) → 409 `VEHICLE_ALREADY_BOOKED` ("This vehicle already has a booking at that time."),
+  no suggestions, not retryable with another pair. Cancel frees vehicle slots too.
+- Default allocation strategy becomes scarcity-aware (`ScarcityAwareStrategy`, new class, handler unchanged):
+  order technicians by (1) fewest OTHER active service types at the dealership for which they are the ONLY active
+  qualified technician (protect sole specialists; owner chose option A), then (2) fewest other active service types
+  they are qualified for, then (3) lowest tier in the required skill, then (4) fewest Confirmed appointments that day,
+  then Id.
+  `LeastQualifiedFirstStrategy` stays in the code as an alternative. Bays: by Id.
+- Cancel only before the appointment starts: StartUtc <= now → 409 APPOINTMENT_NOT_CANCELLABLE ("This appointment has
+  already started or passed."). UI hides Cancel for past appointments and asks for confirmation before cancelling.
+- Technical: client dates outside year 2000–9998 → 400 INVALID_REQUEST (technical bound, not a booking horizon);
+  unknown TimeZoneId in data → 500 INTERNAL_ERROR; idempotency keys are case-sensitive (BIN2 collation).
+
 ## 1. Goal
 A customer picks a vehicle, a service type, a dealership and a start time. The system checks that one qualified
 technician and one free service bay are available for the WHOLE duration, and saves an Appointment linking customer,

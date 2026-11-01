@@ -25,7 +25,7 @@ public class CancelAppointmentHandlerTests
         result.Value.Status.Should().Be("Cancelled");
         var saved = _app.Data.Appointments.Single();
         saved.Status.Should().Be(AppointmentStatus.Cancelled);
-        saved.ResourceSlots.Should().BeEmpty();
+        saved.ResourceSlots.Should().BeEmpty(); // technician, bay and vehicle slots
         _app.UnitOfWork.SaveCalls.Should().Be(1);
     }
 
@@ -33,13 +33,48 @@ public class CancelAppointmentHandlerTests
     public async Task After_cancel_the_same_time_can_be_booked_again()
     {
         var booked = await _app.BookAsync(BrakeInspection, Local.Iso(13), "a");
-        await _app.BookAsync(BrakeInspection, Local.Iso(9), "fill-nam"); // unrelated
+        await _app.BookAsync(BrakeInspection, Local.Iso(9), "fill-nam", vehicleId: 2); // unrelated
         await Cancel(booked.Appointment.Id);
 
         var again = await _app.BookAsync(BrakeInspection, Local.Iso(13), "b");
 
         again.Appointment.Technician.Name.Should().Be("Minh");
         again.Appointment.ServiceBay.Name.Should().Be("Bay 2");
+    }
+
+    [Fact]
+    public async Task Cancel_after_the_start_is_not_cancellable_and_changes_nothing()
+    {
+        var booked = await _app.BookAsync(BrakeInspection, Local.Iso(13), "a");
+        _app.Clock.UtcNow = Local.Utc(13, 15);
+
+        var result = await Cancel(booked.Appointment.Id);
+
+        result.Error!.Code.Should().Be(ErrorCodes.AppointmentNotCancellable);
+        result.Error.Message.Should().Be("This appointment has already started or passed.");
+        _app.Data.Appointments.Single().Status.Should().Be(AppointmentStatus.Confirmed);
+        _app.UnitOfWork.SaveCalls.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Cancel_exactly_at_the_start_is_not_cancellable()
+    {
+        var booked = await _app.BookAsync(BrakeInspection, Local.Iso(13), "a");
+        _app.Clock.UtcNow = Local.Utc(13);
+
+        var result = await Cancel(booked.Appointment.Id);
+
+        result.Error!.Code.Should().Be(ErrorCodes.AppointmentNotCancellable);
+    }
+
+    [Fact]
+    public async Task Cancel_frees_the_vehicle_so_it_can_be_booked_elsewhere_at_that_time()
+    {
+        var booked = await _app.BookAsync(BrakeInspection, Local.Iso(13), "a");
+        await Cancel(booked.Appointment.Id);
+
+        var elsewhere = await _app.BookAsync(5, Local.Iso(13), "b", dealershipId: 2); // Thu Duc oil change, same car, same time
+        elsewhere.Appointment.Dealership.Id.Should().Be(2);
     }
 
     [Fact]

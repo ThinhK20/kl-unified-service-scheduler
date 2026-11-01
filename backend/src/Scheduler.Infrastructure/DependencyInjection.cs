@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Scheduler.Application.Abstractions;
 using Scheduler.Infrastructure.Persistence;
 using Scheduler.Infrastructure.Repositories;
@@ -33,6 +35,10 @@ public static class DependencyInjection
             // No EnableRetryOnFailure: the booking code uses its own transactions and its own retry,
             // and the retrying execution strategy does not allow user-started transactions.
             options.UseSqlServer(connectionString, sql => sql.CommandTimeout(commandTimeout));
+
+            // EF logs every failed SaveChanges as an error with a stack trace. A slot clash is a normal race that the
+            // repository turns into SlotTaken, so log it at Debug; unexpected errors are rethrown and the API logs them.
+            options.ConfigureWarnings(warnings => warnings.Log((CoreEventId.SaveChangesFailed, LogLevel.Debug)));
         });
 
         // One scoped DbContext per request; every repository and the unit of work share it.

@@ -109,6 +109,38 @@ internal sealed class AppointmentRepository(SchedulerDbContext db) : IAppointmen
             .ToListAsync(cancellationToken));
     }
 
+    public Task<bool> IsVehicleBookedAsync(int vehicleId, TimeRange rangeUtc, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(rangeUtc);
+        var start = rangeUtc.StartUtc;
+        var end = rangeUtc.EndUtc;
+
+        // Uses the unique slot index (ResourceType, ResourceId, SlotStartUtc) as a seek.
+        return DbCall.RunAsync(() => db.ResourceSlots
+            .AsNoTracking()
+            .AnyAsync(
+                s => s.ResourceType == ResourceType.Vehicle
+                  && s.ResourceId == vehicleId
+                  && s.SlotStartUtc >= start && s.SlotStartUtc < end,
+                cancellationToken));
+    }
+
+    public async Task<IReadOnlyList<DateTime>> GetVehicleSlotStartsAsync(int vehicleId, TimeRange windowUtc, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(windowUtc);
+        var start = windowUtc.StartUtc;
+        var end = windowUtc.EndUtc;
+
+        return await DbCall.RunAsync(() => db.ResourceSlots
+            .AsNoTracking()
+            .Where(s => s.ResourceType == ResourceType.Vehicle
+                     && s.ResourceId == vehicleId
+                     && s.SlotStartUtc >= start && s.SlotStartUtc < end)
+            .OrderBy(s => s.SlotStartUtc)
+            .Select(s => s.SlotStartUtc)
+            .ToListAsync(cancellationToken));
+    }
+
     public async Task<IReadOnlyDictionary<int, int>> CountConfirmedByTechnicianAsync(
         IReadOnlyCollection<int> technicianIds,
         TimeRange windowUtc,

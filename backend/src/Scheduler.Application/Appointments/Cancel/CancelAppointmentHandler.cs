@@ -6,18 +6,20 @@ using Scheduler.Domain.Errors;
 namespace Scheduler.Application.Appointments.Cancel;
 
 /// <summary>
-/// Cancels a confirmed appointment: Status becomes Cancelled and its slot rows are deleted, so the time can be booked
-/// again. The appointment row stays.
+/// Cancels a confirmed appointment that has not started yet: Status becomes Cancelled and its slot rows are deleted,
+/// so the time can be booked again. The appointment row stays.
 /// </summary>
 public sealed class CancelAppointmentHandler
 {
     private readonly IAppointmentRepository _appointments;
     private readonly IUnitOfWork _unitOfWork;
+    private readonly IClock _clock;
 
-    public CancelAppointmentHandler(IAppointmentRepository appointments, IUnitOfWork unitOfWork)
+    public CancelAppointmentHandler(IAppointmentRepository appointments, IUnitOfWork unitOfWork, IClock clock)
     {
         _appointments = appointments;
         _unitOfWork = unitOfWork;
+        _clock = clock;
     }
 
     public async Task<Result<AppointmentDto>> HandleAsync(CancelAppointmentCommand command, CancellationToken cancellationToken)
@@ -35,7 +37,12 @@ public sealed class CancelAppointmentHandler
             return Error.FromDomain(DomainErrors.Appointment.NotCancellable(appointment.Status));
         }
 
-        appointment.Cancel();
+        if (appointment.StartUtc <= _clock.UtcNow)
+        {
+            return Error.FromDomain(DomainErrors.Appointment.AlreadyStarted);
+        }
+
+        appointment.Cancel(_clock.UtcNow);
 
         try
         {

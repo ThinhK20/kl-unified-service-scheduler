@@ -37,6 +37,9 @@ public static class DomainErrors
             new(DomainErrorCodes.AppointmentNotCancellable,
                 $"Only confirmed appointments can be cancelled. This appointment is {status}.");
 
+        public static readonly DomainError AlreadyStarted =
+            new(DomainErrorCodes.AppointmentNotCancellable, "This appointment has already started or passed.");
+
         public static readonly DomainError VehicleNotOwnedByCustomer =
             RuleViolation("The vehicle does not belong to the customer.");
 

@@ -645,7 +645,8 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                 {
                     b.Property<string>("Key")
                         .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                        .HasColumnType("nvarchar(100)")
+                        .UseCollation("Latin1_General_100_BIN2");
 
                     b.Property<int>("AppointmentId")
                         .HasColumnType("int");
@@ -662,7 +663,8 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.HasKey("Key");
+                    b.HasKey("Key")
+                        .HasName("PK_IdempotencyKeys");
 
                     b.HasIndex("AppointmentId");
 

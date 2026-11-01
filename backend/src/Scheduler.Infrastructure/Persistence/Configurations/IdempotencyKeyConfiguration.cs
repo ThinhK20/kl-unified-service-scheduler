@@ -10,7 +10,12 @@ internal sealed class IdempotencyKeyConfiguration : IEntityTypeConfiguration<Ide
     {
         builder.ToTable("IdempotencyKeys");
         builder.HasKey(k => k.Key).HasName(DbConstraintNames.IdempotencyKeysPrimaryKey);
-        builder.Property(k => k.Key).HasMaxLength(IdempotencyKey.KeyMaxLength).ValueGeneratedNever();
+        // Binary collation: keys are compared exactly, so "abc" and "ABC" are different keys
+        // (the database default collation is case-insensitive).
+        builder.Property(k => k.Key)
+            .HasMaxLength(IdempotencyKey.KeyMaxLength)
+            .UseCollation(IdempotencyKey.KeyCollation)
+            .ValueGeneratedNever();
         builder.Property(k => k.RequestHash).HasMaxLength(IdempotencyKey.RequestHashMaxLength).IsRequired();
         builder.Property(k => k.ResponseJson).HasColumnType("nvarchar(max)").IsRequired();
         builder.Property(k => k.CreatedUtc).IsRequired();

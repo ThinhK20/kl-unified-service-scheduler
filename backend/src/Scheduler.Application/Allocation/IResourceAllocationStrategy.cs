@@ -17,11 +17,15 @@ public interface IResourceAllocationStrategy
 /// <param name="Technicians">Free, active, qualified technicians on shift.</param>
 /// <param name="ServiceBays">Free, active bays of the required type.</param>
 /// <param name="ConfirmedAppointmentsByTechnician">Confirmed appointments that local day, per technician id (missing = 0).</param>
+/// <param name="DealershipTechnicians">ALL active technicians of the dealership (also busy or off-shift ones), with skills.</param>
+/// <param name="ActiveServiceTypes">All active service types of the dealership.</param>
 public sealed record AllocationRequest(
     ServiceType ServiceType,
     IReadOnlyList<Technician> Technicians,
     IReadOnlyList<ServiceBay> ServiceBays,
-    IReadOnlyDictionary<int, int> ConfirmedAppointmentsByTechnician);
+    IReadOnlyDictionary<int, int> ConfirmedAppointmentsByTechnician,
+    IReadOnlyList<Technician> DealershipTechnicians,
+    IReadOnlyList<ServiceType> ActiveServiceTypes);
 
 /// <summary>One technician and one bay to try together.</summary>
 public sealed record ResourcePair(Technician Technician, ServiceBay ServiceBay);

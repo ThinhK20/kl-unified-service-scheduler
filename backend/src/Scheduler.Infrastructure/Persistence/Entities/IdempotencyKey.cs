@@ -13,6 +13,9 @@ public sealed class IdempotencyKey
 
     public const int RequestHashMaxLength = 64;
 
+    /// <summary>Case-sensitive, exact comparison for <see cref="Key"/>.</summary>
+    public const string KeyCollation = "Latin1_General_100_BIN2";
+
     private IdempotencyKey()
     {
     }

@@ -20,7 +20,8 @@ internal static class SwaggerText
         | BOOKING_RULE_VIOLATION | 422 | No | Vehicle not owned by customer, inactive dealership/service, service not offered there, outside opening hours |
         | NO_AVAILABILITY | 409 | No | Valid request but no technician + bay pair is free; see `suggestedStartTimes` |
         | IDEMPOTENCY_CONFLICT | 409 | No | Same Idempotency-Key with a different body |
-        | APPOINTMENT_NOT_CANCELLABLE | 409 | No | Only Confirmed appointments can be cancelled |
+        | VEHICLE_ALREADY_BOOKED | 409 | No | The vehicle already has a booking that overlaps this time (at any dealership) |
+        | APPOINTMENT_NOT_CANCELLABLE | 409 | No | Only Confirmed appointments that have not started yet can be cancelled |
         | DATABASE_BUSY | 503 | Yes | Database busy after one retry (`Retry-After: 1`); retry with the same Idempotency-Key |
         | INTERNAL_ERROR | 500 | No | Unexpected bug |
 

@@ -35,6 +35,9 @@ public sealed record Error(string Code, string Message)
     public static Error IdempotencyConflict() =>
         new(ErrorCodes.IdempotencyConflict, "This Idempotency-Key was already used with a different request body.");
 
+    public static Error VehicleAlreadyBooked() =>
+        new(ErrorCodes.VehicleAlreadyBooked, "This vehicle already has a booking at that time.");
+
     public static Error DatabaseBusy() =>
         new(ErrorCodes.DatabaseBusy, "The system is busy right now. Please try again.");
 

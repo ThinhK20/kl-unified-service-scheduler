@@ -20,6 +20,7 @@ public static class ApiProblems
         [ErrorCodes.BookingRuleViolation] = (StatusCodes.Status422UnprocessableEntity, "Booking rule violation"),
         [ErrorCodes.NoAvailability] = (StatusCodes.Status409Conflict, "No availability"),
         [ErrorCodes.IdempotencyConflict] = (StatusCodes.Status409Conflict, "Idempotency conflict"),
+        [ErrorCodes.VehicleAlreadyBooked] = (StatusCodes.Status409Conflict, "Vehicle already booked"),
         [ErrorCodes.AppointmentNotCancellable] = (StatusCodes.Status409Conflict, "Appointment cannot be cancelled"),
         [ErrorCodes.DatabaseBusy] = (StatusCodes.Status503ServiceUnavailable, "Database busy"),
         [ErrorCodes.InternalError] = (StatusCodes.Status500InternalServerError, "Internal error"),

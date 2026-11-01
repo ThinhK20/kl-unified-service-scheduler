@@ -42,6 +42,25 @@ public class BookAppointmentValidatorTests
     }
 
     [Theory]
+    [InlineData("9999-12-31T23:45:00Z")]
+    [InlineData("9999-12-31T23:45:00+07:00")]
+    [InlineData("9999-01-01T00:00:00Z")]
+    [InlineData("1999-12-31T23:45:00Z")]
+    [InlineData("0001-01-01T08:00:00Z")]
+    public void Start_time_outside_the_technical_year_bound_is_rejected(string startTime)
+    {
+        ErrorsFor(Valid(startTime), "startTime").Should().Equal("startTime must be between the years 2000 and 9998.");
+    }
+
+    [Theory]
+    [InlineData("2000-01-01T00:00:00Z")]
+    [InlineData("9998-12-31T23:45:00Z")]
+    public void Start_time_at_the_edges_of_the_year_bound_passes_the_validator(string startTime)
+    {
+        ErrorsFor(Valid(startTime), "startTime").Should().BeEmpty();
+    }
+
+    [Theory]
     [InlineData(null)]
     [InlineData("")]
     public void Missing_start_time_is_rejected(string? startTime)

@@ -9,6 +9,7 @@ namespace Scheduler.IntegrationTests.Api;
 /// <summary>
 /// SPEC section 8: double booking must be impossible under concurrent requests.
 /// EV battery check at District 1 needs EV Senior and an EV bay: only Lan (Tuan is inactive) and only Bay 3 qualify.
+/// Each racer uses its own car (the vehicle is a reserved resource too), so the technician and bay are what they fight over.
 /// </summary>
 [Collection(SqlServerCollection.Name)]
 public sealed class ConcurrencyApiTests(SqlServerFixture fixture)
@@ -23,12 +24,14 @@ public sealed class ConcurrencyApiTests(SqlServerFixture fixture)
         var day = TestDays.ConcurrentDifferentKeys;
         var start = LocalIso(day, 10);
         var client = _factory.CreateClient();
+        var (customerId, vehicleIds) = await TestFleet.EnsureAsync(fixture, 20);
         using var gate = new SemaphoreSlim(0);
 
         var requests = Enumerable.Range(0, 20).Select(async i =>
         {
             await gate.WaitAsync();
-            using var response = await client.BookAsync(EvBatteryCheck, start, $"concurrent-{day:yyyyMMdd}-{i}");
+            using var response = await client.BookAsync(
+                EvBatteryCheck, start, $"concurrent-{day:yyyyMMdd}-{i}", customerId: customerId, vehicleId: vehicleIds[i]);
             var code = response.StatusCode == HttpStatusCode.Created ? "CREATED" : (await response.ReadProblemAsync()).Code();
             return (response.StatusCode, code);
         }).ToList();
@@ -42,7 +45,7 @@ public sealed class ConcurrencyApiTests(SqlServerFixture fixture)
         var endUtc = startUtc.AddMinutes(60);
         await using var db = fixture.CreateDbContext();
         (await db.Appointments.CountAsync(a => a.StartUtc >= startUtc && a.StartUtc < endUtc)).Should().Be(1);
-        (await db.ResourceSlots.CountAsync(s => s.SlotStartUtc >= startUtc && s.SlotStartUtc < endUtc)).Should().Be(2 * (60 / 15));
+        (await db.ResourceSlots.CountAsync(s => s.SlotStartUtc >= startUtc && s.SlotStartUtc < endUtc)).Should().Be(3 * (60 / 15));
     }
 
     [Fact]

@@ -30,12 +30,18 @@ public sealed class FakeAppointmentRepository : IAppointmentRepository
 
     public List<Appointment> AddAttempts { get; } = [];
 
+    /// <summary>Runs once at the start of the next TryAdd (to simulate a concurrent commit).</summary>
+    public Action? BeforeNextAdd { get; set; }
+
     public int AddCalls => AddAttempts.Count;
 
     public Task<Result<Appointment>> TryAddWithSlotsAsync(Appointment appointment, IdempotencyEntry? idempotencyEntry, CancellationToken cancellationToken)
     {
         ThrowIfTransient();
         AddAttempts.Add(appointment);
+        var before = BeforeNextAdd;
+        BeforeNextAdd = null;
+        before?.Invoke();
 
         if (NextAddResults.TryDequeue(out var forced) && forced is not null)
         {
@@ -103,6 +109,26 @@ public sealed class FakeAppointmentRepository : IAppointmentRepository
             .Select(s => new TakenSlot(s.ResourceType, s.ResourceId, s.SlotStartUtc))
             .ToList();
         return Task.FromResult(slots);
+    }
+
+    public Task<bool> IsVehicleBookedAsync(int vehicleId, TimeRange rangeUtc, CancellationToken cancellationToken)
+    {
+        ThrowIfTransient();
+        return Task.FromResult(_data.Appointments
+            .SelectMany(a => a.ResourceSlots)
+            .Any(s => s.ResourceType == ResourceType.Vehicle && s.ResourceId == vehicleId && rangeUtc.Contains(s.SlotStartUtc)));
+    }
+
+    public Task<IReadOnlyList<DateTime>> GetVehicleSlotStartsAsync(int vehicleId, TimeRange windowUtc, CancellationToken cancellationToken)
+    {
+        ThrowIfTransient();
+        IReadOnlyList<DateTime> starts = _data.Appointments
+            .SelectMany(a => a.ResourceSlots)
+            .Where(s => s.ResourceType == ResourceType.Vehicle && s.ResourceId == vehicleId && windowUtc.Contains(s.SlotStartUtc))
+            .Select(s => s.SlotStartUtc)
+            .Order()
+            .ToList();
+        return Task.FromResult(starts);
     }
 
     public Task<IReadOnlyDictionary<int, int>> CountConfirmedByTechnicianAsync(

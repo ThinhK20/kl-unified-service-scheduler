@@ -7,7 +7,7 @@ namespace Scheduler.Domain.Entities;
 
 /// <summary>
 /// A booked service: one customer vehicle, one technician and one bay for [StartUtc, EndUtc).
-/// It owns the <see cref="ResourceSlot"/> rows that reserve the technician and the bay.
+/// It owns the <see cref="ResourceSlot"/> rows that reserve the technician, the bay and the vehicle.
 /// Snapshots keep the service rules as they were at booking time.
 /// </summary>
 public sealed class Appointment : Entity
@@ -67,14 +67,15 @@ public sealed class Appointment : Entity
     /// <summary>The booked time range.</summary>
     public TimeRange Range => TimeRange.Create(StartUtc, EndUtc);
 
+    /// <summary>True when the status allows cancelling. <see cref="Cancel"/> also needs the start to be in the future.</summary>
     public bool CanBeCancelled => Status == AppointmentStatus.Confirmed;
 
     /// <summary>
-    /// Creates a confirmed appointment and its slot rows (one per 15 minutes for the technician and for the bay).
+    /// Creates a confirmed appointment and its slot rows (one per 15 minutes for the technician, the bay and the vehicle).
     /// Throws a <see cref="DomainException"/> when any booking rule is broken: start not on the grid or not after
     /// <paramref name="nowUtc"/>, vehicle not owned by the customer, inactive dealership or service, service not
     /// offered at the dealership, outside opening hours, or a technician / bay that cannot do the job.
-    /// It does NOT check that the technician and bay are free; the unique slot index does that.
+    /// It does NOT check that the technician, bay and vehicle are free; the unique slot index does that.
     /// </summary>
     public static Appointment Create(
         int customerId,
@@ -131,6 +132,7 @@ public sealed class Appointment : Entity
         {
             appointment._resourceSlots.Add(ResourceSlot.For(ResourceType.Technician, technician.Id, slotStart, appointment));
             appointment._resourceSlots.Add(ResourceSlot.For(ResourceType.Bay, serviceBay.Id, slotStart, appointment));
+            appointment._resourceSlots.Add(ResourceSlot.For(ResourceType.Vehicle, vehicle.Id, slotStart, appointment));
         }
 
         return appointment;
@@ -138,13 +140,19 @@ public sealed class Appointment : Entity
 
     /// <summary>
     /// Cancels the appointment and releases its slots (the slot rows are removed, the appointment row stays).
-    /// Only a confirmed appointment can be cancelled. The slots must be loaded before calling this.
+    /// Only a confirmed appointment that has not started yet (<see cref="StartUtc"/> after <paramref name="nowUtc"/>)
+    /// can be cancelled. The slots must be loaded before calling this.
     /// </summary>
-    public void Cancel()
+    public void Cancel(DateTime nowUtc)
     {
         if (!CanBeCancelled)
         {
             throw new DomainException(DomainErrors.Appointment.NotCancellable(Status));
+        }
+
+        if (StartUtc <= Guard.Utc(nowUtc))
+        {
+            throw new DomainException(DomainErrors.Appointment.AlreadyStarted);
         }
 
         Status = AppointmentStatus.Cancelled;

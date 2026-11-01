@@ -24,4 +24,9 @@ internal static class TestDays
     public static readonly DateOnly ConcurrentSameKey = new(2030, 6, 24);
     public static readonly DateOnly ReplayAfterStart = new(2030, 6, 25);
     public static readonly DateOnly CancelledReplay = new(2030, 6, 26);
+    public static readonly DateOnly VehicleTwoDealerships = new(2030, 7, 1);
+    public static readonly DateOnly VehicleConcurrent = new(2030, 7, 2);
+    public static readonly DateOnly CancelAfterStart = new(2030, 7, 3);
+    public static readonly DateOnly CorruptTimeZone = new(2030, 7, 4);
+    public static readonly DateOnly SuggestionsSkipBusyCar = new(2030, 7, 5);
 }

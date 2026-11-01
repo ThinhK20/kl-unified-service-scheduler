@@ -1,7 +1,7 @@
 namespace Scheduler.Application.Allocation;
 
 /// <summary>
-/// Default strategy (SPEC section 5 step 5). Keeps senior people free for harder jobs:
+/// Alternative strategy (SPEC section 5 step 5; the default is now <see cref="ScarcityAwareStrategy"/>). Keeps senior people free for harder jobs:
 /// technicians with the LOWEST tier in the required skill first, then fewest confirmed appointments that local day,
 /// then lowest Id. Bays in Id order (all matching bays are equal, because the match is exact).
 /// Pairs are technician-major: every bay is tried with the first technician before the next technician.

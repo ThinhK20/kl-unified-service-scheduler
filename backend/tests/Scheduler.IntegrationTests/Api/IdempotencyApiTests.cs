@@ -88,13 +88,33 @@ public sealed class IdempotencyApiTests(SqlServerFixture fixture)
         var day = TestDays.NoAvailability;
         await Client.BookOkAsync(BrakeInspection, LocalIso(day, 13)); // the only lift bay: 13:00-14:30
 
-        using var response = await Client.BookAsync(BrakeInspection, LocalIso(day, 13, 30));
+        using var response = await Client.BookAsync(BrakeInspection, LocalIso(day, 13, 30), vehicleId: 2); // another car
 
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var problem = await response.ReadProblemAsync();
         problem.Code().Should().Be("NO_AVAILABILITY");
         var suggestions = problem.GetProperty("suggestedStartTimes").EnumerateArray().Select(e => e.GetString()).ToList();
         suggestions.Should().Equal(UtcIso(LocalToUtc(day, 14, 30)), UtcIso(LocalToUtc(day, 14, 45)), UtcIso(LocalToUtc(day, 15)));
+    }
+
+    [Fact]
+    public async Task No_availability_suggestions_skip_times_when_the_customers_car_is_busy()
+    {
+        var day = TestDays.SuggestionsSkipBusyCar;
+        await Client.BookOkAsync(BrakeInspection, LocalIso(day, 13)); // car 1 takes the only lift bay 13:00-14:30
+        using (var thuDuc = await Client.BookAsync(5, LocalIso(day, 15, 30), vehicleId: 2, dealershipId: 2)) // car 2 busy 15:30-16:30
+        {
+            thuDuc.StatusCode.Should().Be(HttpStatusCode.Created);
+        }
+
+        using var response = await Client.BookAsync(BrakeInspection, LocalIso(day, 13, 30), vehicleId: 2);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var problem = await response.ReadProblemAsync();
+        problem.Code().Should().Be("NO_AVAILABILITY");
+        // 14:30, 14:45 and 15:00 would overlap car 2's booking at Thu Duc, so earlier times are suggested.
+        problem.GetProperty("suggestedStartTimes").EnumerateArray().Select(e => e.GetString())
+            .Should().Equal(UtcIso(LocalToUtc(day, 11)), UtcIso(LocalToUtc(day, 11, 15)), UtcIso(LocalToUtc(day, 11, 30)));
     }
 
     private async Task<int> CountAppointmentsAsync(DateOnly day)

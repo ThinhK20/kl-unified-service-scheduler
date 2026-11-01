@@ -23,7 +23,8 @@ public sealed class TestApp
             new FakeTechnicianRepository(Data),
             new FakeServiceBayRepository(Data),
             Appointments,
-            new LeastQualifiedFirstStrategy());
+            Catalog,
+            new ScarcityAwareStrategy());
     }
 
     public FakeData Data { get; }
@@ -43,7 +44,7 @@ public sealed class TestApp
     public BookAppointmentHandler BookHandler(IIdempotencyStore? idempotency = null) => new(
         new BookAppointmentValidator(), Catalog, Catalog, Catalog, Catalog, Appointments, idempotency ?? Idempotency, Availability, Clock);
 
-    public CancelAppointmentHandler CancelHandler() => new(Appointments, UnitOfWork);
+    public CancelAppointmentHandler CancelHandler() => new(Appointments, UnitOfWork, Clock);
 
     public GetAvailabilityHandler AvailabilityHandler() => new(new GetAvailabilityValidator(), Catalog, Catalog, Availability, Clock);
 
@@ -62,9 +63,10 @@ public sealed class TestApp
         new(key, customerId, vehicleId, dealershipId, serviceTypeId, startTime);
 
     /// <summary>Books through the real handler and returns the result (fails the test on error).</summary>
-    public async Task<BookAppointmentResult> BookAsync(int serviceTypeId, string startTime, string key)
+    public async Task<BookAppointmentResult> BookAsync(int serviceTypeId, string startTime, string key, int vehicleId = 1, int dealershipId = 1)
     {
-        var result = await BookHandler().HandleAsync(Command(serviceTypeId, startTime, key), CancellationToken.None);
+        var result = await BookHandler().HandleAsync(
+            Command(serviceTypeId, startTime, key, vehicleId: vehicleId, dealershipId: dealershipId), CancellationToken.None);
         result.IsSuccess.Should().BeTrue(result.Error?.Message);
         return result.Value;
     }

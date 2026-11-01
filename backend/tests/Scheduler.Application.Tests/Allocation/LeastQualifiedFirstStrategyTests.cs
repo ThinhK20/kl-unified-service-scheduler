@@ -16,7 +16,7 @@ public class LeastQualifiedFirstStrategyTests
             _data.GetServiceType(2),
             [_data.GetTechnician(5), _data.GetTechnician(1), _data.GetTechnician(3)],
             [_data.ServiceBays[1]],
-            new Dictionary<int, int>());
+            new Dictionary<int, int>(), [], []);
 
         _strategy.Order(request).Select(p => p.Technician.Name).Should().Equal("Minh", "Nam", "Tuan");
     }
@@ -29,7 +29,7 @@ public class LeastQualifiedFirstStrategyTests
             _data.GetServiceType(1),
             [_data.GetTechnician(1), _data.GetTechnician(5), _data.GetTechnician(2)],
             [_data.ServiceBays[0]],
-            new Dictionary<int, int> { [1] = 2, [5] = 1 });
+            new Dictionary<int, int> { [1] = 2, [5] = 1 }, [], []);
 
         _strategy.Order(request).Select(p => p.Technician.Name).Should().Equal("Lan", "Tuan", "Nam");
     }
@@ -41,7 +41,7 @@ public class LeastQualifiedFirstStrategyTests
             _data.GetServiceType(1),
             [_data.GetTechnician(5), _data.GetTechnician(1)],
             [_data.ServiceBays[0]],
-            new Dictionary<int, int>());
+            new Dictionary<int, int>(), [], []);
 
         _strategy.Order(request).Select(p => p.Technician.Id).Should().Equal(1, 5);
     }
@@ -55,7 +55,7 @@ public class LeastQualifiedFirstStrategyTests
             _data.GetServiceType(2),
             [_data.GetTechnician(1), _data.GetTechnician(3)],
             [bay5, bay2],
-            new Dictionary<int, int>());
+            new Dictionary<int, int>(), [], []);
 
         var pairs = _strategy.Order(request);
 
@@ -66,7 +66,7 @@ public class LeastQualifiedFirstStrategyTests
     [Fact]
     public void Empty_input_gives_no_pairs()
     {
-        var request = new AllocationRequest(_data.GetServiceType(1), [], [_data.ServiceBays[0]], new Dictionary<int, int>());
+        var request = new AllocationRequest(_data.GetServiceType(1), [], [_data.ServiceBays[0]], new Dictionary<int, int>(), [], []);
 
         _strategy.Order(request).Should().BeEmpty();
     }

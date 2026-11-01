@@ -28,8 +28,13 @@ public sealed class Dealership : Entity
 
     public bool IsActive { get; private set; }
 
-    /// <summary>The dealership time zone. Throws a <see cref="Errors.DomainException"/> if the id is unknown.</summary>
-    public TimeZoneInfo TimeZone => _timeZone ??= TimeZones.Find(TimeZoneId);
+    /// <summary>
+    /// The dealership time zone. A stored id that is unknown is broken server data, not a client mistake,
+    /// so it throws <see cref="InvalidOperationException"/> (the API answers 500).
+    /// </summary>
+    public TimeZoneInfo TimeZone => _timeZone ??= TimeZones.TryFind(TimeZoneId, out var timeZone)
+        ? timeZone
+        : throw new InvalidOperationException($"Dealership {Id} has an unknown time zone id '{TimeZoneId}'. Fix the stored data.");
 
     private DailyWindow OpeningHours => new(OpenTime, CloseTime);
 
@@ -37,6 +42,7 @@ public sealed class Dealership : Entity
     {
         _ = new DailyWindow(openTime, closeTime);
         var id = Guard.NotBlank(timeZoneId, nameof(TimeZoneId));
+        _ = TimeZones.Find(id); // input check: an unknown id is the caller's mistake
         var dealership = new Dealership
         {
             Name = Guard.NotBlank(name, nameof(Name)),
@@ -45,7 +51,6 @@ public sealed class Dealership : Entity
             CloseTime = closeTime,
             IsActive = true,
         };
-        _ = dealership.TimeZone; // fail early on an unknown time zone
         return dealership;
     }
 

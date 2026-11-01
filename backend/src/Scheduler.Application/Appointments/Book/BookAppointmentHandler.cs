@@ -124,6 +124,12 @@ public sealed class BookAppointmentHandler
             return Error.FromDomain(DomainErrors.Appointment.OutsideOpeningHours);
         }
 
+        // The vehicle is a reserved resource too (SPEC section 0c): one car, one booking at a time.
+        if (await _appointments.IsVehicleBookedAsync(request.VehicleId, range, cancellationToken))
+        {
+            return await VehicleAlreadyBookedAsync(request, cancellationToken);
+        }
+
         // Steps 4-5: candidates (may be stale) in strategy order.
         var localDate = DateOnly.FromDateTime(context.Dealership.ToLocal(request.StartUtc));
         var day = await _availability.LoadDayAsync(context.Dealership, context.ServiceType, localDate, cancellationToken);
@@ -166,6 +172,12 @@ public sealed class BookAppointmentHandler
             switch (added.Error.Code)
             {
                 case RepositoryErrors.SlotTakenCode:
+                    // The taken slot may be the VEHICLE's (a twin booking of the same car won): then no pair can work.
+                    if (await _appointments.IsVehicleBookedAsync(request.VehicleId, range, cancellationToken))
+                    {
+                        return await VehicleAlreadyBookedAsync(request, cancellationToken);
+                    }
+
                     continue;
                 case RepositoryErrors.IdempotencyKeyTakenCode:
                     // A concurrent request with the same key won: apply step 2 again.
@@ -183,10 +195,25 @@ public sealed class BookAppointmentHandler
             return concurrent;
         }
 
+        // The candidates may have looked busy because a twin booking of the same car just won.
+        if (await _appointments.IsVehicleBookedAsync(request.VehicleId, range, cancellationToken))
+        {
+            return await VehicleAlreadyBookedAsync(request, cancellationToken);
+        }
+
         // Step 9: no pair worked. Suggest nearby free times from a fresh read of the day.
+        // Never suggest a time when the customer's car is busy (it would fail with VEHICLE_ALREADY_BOOKED).
         var fresh = await _availability.LoadDayAsync(context.Dealership, context.ServiceType, localDate, cancellationToken);
-        return Error.NoAvailability(fresh.SuggestStartTimes(request.StartUtc, _clock.UtcNow, MaxSuggestions));
+        var vehicleBusy = await _appointments.GetVehicleSlotStartsAsync(request.VehicleId, fresh.OpeningHoursUtc, cancellationToken);
+        return Error.NoAvailability(fresh.SuggestStartTimes(request.StartUtc, _clock.UtcNow, MaxSuggestions, vehicleBusy));
     }
+
+    /// <summary>
+    /// The car is busy. If the booking that holds it is a concurrent retry with the SAME key (it committed after our
+    /// step 2), answer with its saved response; otherwise VEHICLE_ALREADY_BOOKED.
+    /// </summary>
+    private async Task<Result<BookAppointmentResult>> VehicleAlreadyBookedAsync(BookingRequest request, CancellationToken cancellationToken) =>
+        await CheckIdempotencyAsync(request, cancellationToken) ?? Error.VehicleAlreadyBooked();
 
     private async Task<Result<BookingContext>> LoadAsync(BookingRequest request, CancellationToken cancellationToken)
     {
