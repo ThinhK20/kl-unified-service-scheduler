@@ -3,11 +3,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Scheduler.Application.Abstractions;
 using Scheduler.Infrastructure.Persistence;
+using Scheduler.Infrastructure.Repositories;
 using Scheduler.Infrastructure.Time;
 
 namespace Scheduler.Infrastructure;
 
-/// <summary>Registers Infrastructure services (database, clock).</summary>
+/// <summary>Registers Infrastructure services (database, repositories, unit of work, clock).</summary>
 public static class DependencyInjection
 {
     public const string ConnectionStringName = "Scheduler";
@@ -33,6 +34,17 @@ public static class DependencyInjection
             // and the retrying execution strategy does not allow user-started transactions.
             options.UseSqlServer(connectionString, sql => sql.CommandTimeout(commandTimeout));
         });
+
+        // One scoped DbContext per request; every repository and the unit of work share it.
+        services.AddScoped<IAppointmentRepository, AppointmentRepository>();
+        services.AddScoped<ITechnicianRepository, TechnicianRepository>();
+        services.AddScoped<IServiceBayRepository, ServiceBayRepository>();
+        services.AddScoped<IDealershipRepository, DealershipRepository>();
+        services.AddScoped<IServiceTypeRepository, ServiceTypeRepository>();
+        services.AddScoped<IVehicleRepository, VehicleRepository>();
+        services.AddScoped<ICustomerRepository, CustomerRepository>();
+        services.AddScoped<IIdempotencyStore, IdempotencyStore>();
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         services.AddSingleton<IClock, SystemClock>();
 

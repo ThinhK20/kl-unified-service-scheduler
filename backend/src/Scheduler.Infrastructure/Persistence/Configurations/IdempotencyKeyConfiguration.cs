@@ -9,7 +9,7 @@ internal sealed class IdempotencyKeyConfiguration : IEntityTypeConfiguration<Ide
     public void Configure(EntityTypeBuilder<IdempotencyKey> builder)
     {
         builder.ToTable("IdempotencyKeys");
-        builder.HasKey(k => k.Key);
+        builder.HasKey(k => k.Key).HasName(DbConstraintNames.IdempotencyKeysPrimaryKey);
         builder.Property(k => k.Key).HasMaxLength(IdempotencyKey.KeyMaxLength).ValueGeneratedNever();
         builder.Property(k => k.RequestHash).HasMaxLength(IdempotencyKey.RequestHashMaxLength).IsRequired();
         builder.Property(k => k.ResponseJson).HasColumnType("nvarchar(max)").IsRequired();

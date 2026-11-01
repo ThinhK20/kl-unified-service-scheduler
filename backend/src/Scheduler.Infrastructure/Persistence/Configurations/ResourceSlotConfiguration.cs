@@ -6,9 +6,6 @@ namespace Scheduler.Infrastructure.Persistence.Configurations;
 
 internal sealed class ResourceSlotConfiguration : IEntityTypeConfiguration<ResourceSlot>
 {
-    /// <summary>The unique index that makes double booking impossible.</summary>
-    public const string UniqueSlotIndexName = "UX_ResourceSlots_Resource_Slot";
-
     public void Configure(EntityTypeBuilder<ResourceSlot> builder)
     {
         builder.ToTable("ResourceSlots");
@@ -21,7 +18,7 @@ internal sealed class ResourceSlotConfiguration : IEntityTypeConfiguration<Resou
         // ResourceId points to a technician or a bay depending on ResourceType, so it has no foreign key.
         builder.HasIndex(s => new { s.ResourceType, s.ResourceId, s.SlotStartUtc })
             .IsUnique()
-            .HasDatabaseName(UniqueSlotIndexName);
+            .HasDatabaseName(DbConstraintNames.UniqueResourceSlot);
 
         builder.HasIndex(s => s.AppointmentId).HasDatabaseName("IX_ResourceSlots_AppointmentId");
     }
