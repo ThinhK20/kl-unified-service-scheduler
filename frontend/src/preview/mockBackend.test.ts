@@ -279,3 +279,16 @@ describe('parseWithOffset', () => {
     expect(parseWithOffset('2030-02-30T10:30:00Z')).toBeNull();
   });
 });
+
+describe('guided tour helper', () => {
+  it("another customer's booking takes the slot, stays out of the demo customer's list, and leads to 409 with suggestions", () => {
+    const { backend, book, call } = setup();
+    expect(backend.simulateOtherCustomerBooking(1, 4, Date.parse(at('11:00')))).toBe(true);
+    expect(backend.simulateOtherCustomerBooking(1, 4, Date.parse(at('11:00')))).toBe(false); // Lan and the EV bay are taken
+    const taken = book(2, 4, at('11:00'));
+    expect(taken.status).toBe(409);
+    expect(taken.body).toMatchObject({ code: 'NO_AVAILABILITY' });
+    expect((taken.body.suggestedStartTimes as string[]).length).toBeGreaterThan(0);
+    expect(call('GET', '/api/appointments?customerId=1').body).toEqual([]);
+  });
+});

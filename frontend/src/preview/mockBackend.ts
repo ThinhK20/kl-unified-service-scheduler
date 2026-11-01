@@ -710,6 +710,38 @@ export class MockSchedulerBackend {
     return { id: appointment.id, dto };
   }
 
+  /**
+   * Demo only (the guided tour): another customer takes the first free technician + bay at this start,
+   * so the next booking of the same time gets 409 NO_AVAILABILITY, like a real race. The row has
+   * customerId 0 and vehicleId 0, so it never shows in the demo customer's list. Returns false when
+   * nothing was free.
+   */
+  simulateOtherCustomerBooking(dealershipId: number, serviceTypeId: number, startUtc: number): boolean {
+    const dealership = dealerships.find((d) => d.id === dealershipId);
+    const service = serviceTypes.find((s) => s.id === serviceTypeId);
+    if (!dealership || !service) return false;
+    const range = { start: startUtc, end: startUtc + service.durationMinutes * 60_000 };
+    const pair = this.findPairs(dealership, service, localDateOf(startUtc, dealership.timeZoneId), range)[0];
+    if (!pair) return false;
+    const appointment: StoredAppointment = {
+      id: this.state.nextId,
+      status: 'Confirmed',
+      customerId: 0,
+      vehicleId: 0,
+      dealershipId,
+      serviceTypeId,
+      technicianId: pair.technician.id,
+      serviceBayId: pair.bay.id,
+      startUtc: range.start,
+      endUtc: range.end,
+      createdUtc: this.now(),
+      durationSnapshot: service.durationMinutes,
+    };
+    this.state = { ...this.state, nextId: this.state.nextId + 1, appointments: [...this.state.appointments, appointment] };
+    this.changed();
+    return true;
+  }
+
   // --- appointments ------------------------------------------------------------------------
 
   private getAppointments(query: URLSearchParams): MockResponse {

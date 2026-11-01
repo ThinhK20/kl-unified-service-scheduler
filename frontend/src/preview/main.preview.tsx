@@ -17,7 +17,7 @@ if (!root) throw new Error('Missing #root element');
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <PreviewRoot onResetData={mockApi.reset} />
+      <PreviewRoot onResetData={mockApi.reset} backend={mockApi.backend} />
     </QueryClientProvider>
   </StrictMode>,
 );

@@ -102,12 +102,6 @@ tests; the integration tests need Docker.
 
 Visual Studio / Rider users can run the requests in [`backend/src/Scheduler.Api/Scheduler.Api.http`](backend/src/Scheduler.Api/Scheduler.Api.http).
 
-### d) Browser-only live preview
-
-`cd frontend && npm run build:preview` builds `frontend/dist-preview/index.html`: one self-contained file that runs the
-real React app against a simulated API in the browser (same seed data and booking rules as the backend, demo data kept
-in the browser). Useful for a quick look without .NET or SQL Server; it is a demo, not the real backend.
-
 ### c) Run the tests
 
 ```bash
@@ -133,6 +127,17 @@ If your network blocks Docker Hub, Testcontainers cannot pull its helper ("Ryuk"
 The SQL Server image itself comes from `mcr.microsoft.com`.
 
 ---
+
+### d) Browser-only live preview
+
+`cd frontend && npm run build:preview` builds `frontend/dist-preview/index.html`: one self-contained file that runs the
+real React app against a simulated API in the browser (same seed data and booking rules as the backend, demo data kept
+in the browser). Useful for a quick look without .NET or SQL Server; it is a demo, not the real backend.
+
+Click **Play the demo** in the top banner for a hands-free tour (about 40 seconds). It drives the real screens like a
+person would: it books an EV battery check (the system assigns Lan and the EV bay), starts a second booking while a
+simulated other customer takes the same time (409 with suggested times, then booking a suggestion), and cancels the
+first booking with the confirm step. **Stop** ends it at any point; **Replay** runs it again from fresh data.
 
 ## 2. Walkthrough with curl
 
