@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>My appointments</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F4F3EF}
+a{color:#C2410C}a:hover{color:#9A3412}
+</style>
+</helmet>
+<div style="min-height: 900px; background: #F4F3EF; font-family: Inter, system-ui, sans-serif; color: #16202A">
+
+<header style="background: #16202A; color: #FFFFFF">
+<div style="max-width: 1200px; margin: 0 auto; padding: 0 24px; height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F59E5B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+<span style="font-family: Archivo, sans-serif; font-weight: 700; font-size: 18px">Service Scheduler</span>
+</div>
+<nav aria-label="Main" style="display: flex; gap: 4px; flex-wrap: wrap">
+<a href="Main.dc.html" style="color: #C9D1D9; text-decoration: none; padding: 12px 14px; border-bottom: 2px solid transparent; font-weight: 500; font-size: 14px">Book a service</a>
+<a href="Appointments.dc.html" style="color: #FFFFFF; text-decoration: none; padding: 12px 14px; border-bottom: 2px solid #F59E5B; font-weight: 600; font-size: 14px">My appointments</a>
+</nav>
+<span style="font-size: 13px; color: #C9D1D9">Demo customer</span>
+</div>
+</header>
+
+<main style="max-width: 880px; margin: 0 auto; padding: 32px 24px 48px">
+<div style="display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 24px">
+<div>
+<h1 style="font-family: Archivo, sans-serif; font-size: 32px; font-weight: 700; margin: 0 0 6px">My appointments</h1>
+<p style="margin: 0; color: #5B6570; font-size: 15px">Newest first. Cancelling frees the time for other customers.</p>
+</div>
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; height: 44px; padding: 0 18px; border-radius: 10px; background: #C2410C; color: #FFFFFF; text-decoration: none; font-weight: 600; font-size: 14px">Book a service</a>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 14px">
+<sc-for list="{{items}}" as="a" hint-placeholder-count="4">
+<article style="background: #FFFFFF; border: 1px solid #DAD7CF; border-radius: 12px; padding: 20px 24px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap">
+<div style="width: 64px; flex: none; text-align: center; border-right: 1px solid #E8E5DD; padding-right: 20px">
+<div style="font-size: 12px; color: #5B6570; font-weight: 600; text-transform: uppercase">{{a.mon}}</div>
+<div style="font-family: Archivo, sans-serif; font-size: 28px; font-weight: 700; line-height: 1.1">{{a.day}}</div>
+</div>
+<div style="flex: 1 1 280px; min-width: 0">
+<div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px">
+<h2 style="margin: 0; font-size: 17px; font-weight: 600">{{a.service}}</h2>
+<span style="padding: 3px 10px; border-radius: 999px; background: {{a.badgeBg}}; color: {{a.badgeColor}}; font-size: 12px; font-weight: 600">{{a.status}}</span>
+</div>
+<p style="margin: 0; font-size: 14px; color: #5B6570">{{a.time}} · {{a.vehicle}} · {{a.dealer}}</p>
+<p style="margin: 4px 0 0; font-size: 13px; color: #5B6570">Technician {{a.tech}} · {{a.bay}}</p>
+</div>
+<sc-if value="{{a.canCancel}}" hint-placeholder-val="{{true}}">
+<button type="button" onClick="{{a.cancel}}" style="height: 44px; padding: 0 16px; border-radius: 8px; border: 1px solid #B9B5AA; background: #FFFFFF; color: #16202A; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer">Cancel</button>
+</sc-if>
+</article>
+</sc-for>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { cancelled: [] };
+  }
+  renderVals() {
+    const badge = {
+      Confirmed: { badgeBg: '#E3F1E8', badgeColor: '#1A6741' },
+      Cancelled: { badgeBg: '#EEEDEA', badgeColor: '#4B535B' },
+      Completed: { badgeBg: '#E4ECF7', badgeColor: '#1E4E8C' }
+    };
+    const list = [
+      { id: 1, mon: 'Nov', day: '10', service: 'Oil change', time: '10:30 – 11:30', vehicle: 'Toyota Vios 2021', dealer: 'District 1 Service Centre', tech: '[name]', bay: '[bay]', status: 'Confirmed' },
+      { id: 2, mon: 'Nov', day: '21', service: 'Tyre rotation', time: '09:00 – 09:30', vehicle: 'Honda CR-V 2023', dealer: 'Thu Duc Service Centre', tech: '[name]', bay: '[bay]', status: 'Confirmed' },
+      { id: 3, mon: 'Oct', day: '18', service: 'Brake inspection', time: '14:00 – 15:30', vehicle: 'Honda CR-V 2023', dealer: 'District 1 Service Centre', tech: '[name]', bay: '[bay]', status: 'Completed' },
+      { id: 4, mon: 'Oct', day: '02', service: 'Oil change', time: '08:15 – 09:15', vehicle: 'Toyota Vios 2021', dealer: 'District 1 Service Centre', tech: '[name]', bay: '[bay]', status: 'Cancelled' }
+    ];
+    return {
+      items: list.map((a) => {
+        const status = this.state.cancelled.includes(a.id) ? 'Cancelled' : a.status;
+        return {
+          ...a,
+          status,
+          ...badge[status],
+          canCancel: status === 'Confirmed',
+          cancel: () => this.setState({ cancelled: this.state.cancelled.concat([a.id]) })
+        };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

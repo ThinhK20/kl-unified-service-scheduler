@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Booking confirmed</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F4F3EF}
+a{color:#C2410C}a:hover{color:#9A3412}
+</style>
+</helmet>
+<div style="min-height: 820px; background: #F4F3EF; font-family: Inter, system-ui, sans-serif; color: #16202A">
+
+<header style="background: #16202A; color: #FFFFFF">
+<div style="max-width: 1200px; margin: 0 auto; padding: 0 24px; height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+<div style="display: flex; align-items: center; gap: 10px">
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#F59E5B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+<span style="font-family: Archivo, sans-serif; font-weight: 700; font-size: 18px">Service Scheduler</span>
+</div>
+<nav aria-label="Main" style="display: flex; gap: 4px; flex-wrap: wrap">
+<a href="Main.dc.html" style="color: #FFFFFF; text-decoration: none; padding: 12px 14px; border-bottom: 2px solid #F59E5B; font-weight: 600; font-size: 14px">Book a service</a>
+<a href="Appointments.dc.html" style="color: #C9D1D9; text-decoration: none; padding: 12px 14px; border-bottom: 2px solid transparent; font-weight: 500; font-size: 14px">My appointments</a>
+</nav>
+<span style="font-size: 13px; color: #C9D1D9">Demo customer</span>
+</div>
+</header>
+
+<main style="max-width: 720px; margin: 0 auto; padding: 48px 24px">
+<div style="background: #FFFFFF; border: 1px solid #DAD7CF; border-radius: 16px; padding: 36px; display: flex; flex-direction: column; gap: 24px">
+<div style="display: flex; gap: 16px; align-items: center">
+<div style="width: 52px; height: 52px; border-radius: 50%; background: #E3F1E8; display: flex; align-items: center; justify-content: center; flex: none">
+<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1F7A4D" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+</div>
+<div>
+<h1 style="font-family: Archivo, sans-serif; font-size: 28px; margin: 0">You're booked</h1>
+<p style="margin: 4px 0 0; color: #5B6570; font-size: 15px">Oil change · Tue 10 Nov 2026 · 10:30 – 11:30</p>
+</div>
+</div>
+
+<dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 24px; border-top: 1px solid #E8E5DD; border-bottom: 1px solid #E8E5DD; padding: 24px 0">
+<div><dt style="font-size: 13px; color: #5B6570; margin-bottom: 4px">Vehicle</dt><dd style="margin: 0; font-weight: 600">Toyota Vios 2021 · 51A-123.45</dd></div>
+<div><dt style="font-size: 13px; color: #5B6570; margin-bottom: 4px">Dealership</dt><dd style="margin: 0; font-weight: 600">District 1 Service Centre</dd></div>
+<div><dt style="font-size: 13px; color: #5B6570; margin-bottom: 4px">Technician</dt><dd style="margin: 0; font-weight: 600">[Assigned technician]</dd></div>
+<div><dt style="font-size: 13px; color: #5B6570; margin-bottom: 4px">Service bay</dt><dd style="margin: 0; font-weight: 600">[Assigned bay]</dd></div>
+<div><dt style="font-size: 13px; color: #5B6570; margin-bottom: 4px">Booking reference</dt><dd style="margin: 0; font-weight: 600">[APPOINTMENT ID]</dd></div>
+<div><dt style="font-size: 13px; color: #5B6570; margin-bottom: 4px">Status</dt><dd style="margin: 0"><span style="display: inline-block; padding: 3px 10px; border-radius: 999px; background: #E3F1E8; color: #1A6741; font-size: 13px; font-weight: 600">Confirmed</span></dd></div>
+</dl>
+
+<p style="margin: 0; font-size: 14px; color: #5B6570">Please arrive 10 minutes early. You can cancel from My appointments.</p>
+
+<div style="display: flex; gap: 12px; flex-wrap: wrap">
+<a href="Appointments.dc.html" style="display: inline-flex; align-items: center; height: 48px; padding: 0 20px; border-radius: 10px; background: #C2410C; color: #FFFFFF; text-decoration: none; font-weight: 600">View my appointments</a>
+<a href="Main.dc.html" style="display: inline-flex; align-items: center; height: 48px; padding: 0 20px; border-radius: 10px; border: 1px solid #B9B5AA; background: #FFFFFF; color: #16202A; text-decoration: none; font-weight: 600">Book another service</a>
+</div>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
