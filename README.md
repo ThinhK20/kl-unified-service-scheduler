@@ -102,6 +102,12 @@ tests; the integration tests need Docker.
 
 Visual Studio / Rider users can run the requests in [`backend/src/Scheduler.Api/Scheduler.Api.http`](backend/src/Scheduler.Api/Scheduler.Api.http).
 
+### d) Browser-only live preview
+
+`cd frontend && npm run build:preview` builds `frontend/dist-preview/index.html`: one self-contained file that runs the
+real React app against a simulated API in the browser (same seed data and booking rules as the backend, demo data kept
+in the browser). Useful for a quick look without .NET or SQL Server; it is a demo, not the real backend.
+
 ### c) Run the tests
 
 ```bash
