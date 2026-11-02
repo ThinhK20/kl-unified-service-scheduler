@@ -1,6 +1,6 @@
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
-import { DateInput } from '../../components/DateInput';
+import { Calendar } from '../../components/Calendar';
 import { Select } from '../../components/Select';
 import { Spinner } from '../../components/Spinner';
 import { formatDealershipOption, formatServiceOption, formatVehicleOption } from '../../lib/formatters';
@@ -81,7 +81,7 @@ export function BookingForm({ model }: { model: BookingFormModel }) {
             options={model.serviceTypes.map((s) => ({ value: String(s.id), label: formatServiceOption(s) }))}
             hint={serviceHint}
             error={errors.serviceTypeId?.message}
-            {...register('serviceTypeId', { onChange: model.onServiceOrDateChange })}
+            {...register('serviceTypeId', { onChange: model.onServiceChange })}
           />
         </section>
 
@@ -89,15 +89,24 @@ export function BookingForm({ model }: { model: BookingFormModel }) {
           <h2 id="step-time" className="card__title">
             4. Date and time
           </h2>
-          <DateInput
+          <Calendar
             label="Date"
-            min={model.minDate}
+            value={model.selectedDate}
+            onChange={model.selectDate}
+            month={model.calendarMonth}
+            onMonthChange={model.onMonthChange}
+            today={model.minDate}
+            dayStatuses={model.dayStatuses}
+            state={model.daysState}
+            onRetry={model.refetchDays}
+            disabled={!model.canPickDate}
+            hint={model.canPickDate ? undefined : 'Choose a dealership and a service first.'}
             error={errors.date?.message}
-            {...register('date', { onChange: model.onServiceOrDateChange })}
           />
           <TimeSlotPicker
             state={model.slotsState}
             slots={model.slots}
+            note={model.availabilityNote}
             selectedKey={model.selectedSlotKey}
             onSelect={model.selectTime}
             onRetry={model.refetchSlots}

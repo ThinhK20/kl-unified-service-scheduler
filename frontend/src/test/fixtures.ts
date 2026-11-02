@@ -1,7 +1,19 @@
-import type { AppointmentDto, AvailabilityDto, DealershipDto, ServiceTypeDto, VehicleDto } from '../api/types';
+import type {
+  AppointmentDto,
+  AvailabilityDaysDto,
+  AvailabilityDto,
+  DayStatus,
+  DealershipDto,
+  ServiceTypeDto,
+  StartTimeStatus,
+  VehicleDto,
+} from '../api/types';
 
 export const TZ = 'Asia/Ho_Chi_Minh';
 export const DATE = '2030-01-15';
+/** "Now" for page tests: 10:00 on 10 Jan 2030 in Ho Chi Minh City, so the calendar opens on January 2030. */
+export const NOW = '2030-01-10T03:00:00Z';
+export const TODAY = '2030-01-10';
 
 export const dealerships: DealershipDto[] = [
   { id: 1, name: 'District 1 Service Centre', timeZoneId: TZ, openTime: '08:00', closeTime: '17:00' },
@@ -35,7 +47,51 @@ export const availabilityDto: AvailabilityDto = {
     { startUtc: '2030-01-15T03:30:00Z', endUtc: '2030-01-15T04:30:00Z' },
     { startUtc: '2030-01-15T04:00:00Z', endUtc: '2030-01-15T05:00:00Z' },
   ],
+  times: [
+    { startUtc: '2030-01-15T03:00:00Z', endUtc: '2030-01-15T04:00:00Z', status: 'Available' },
+    { startUtc: '2030-01-15T03:30:00Z', endUtc: '2030-01-15T04:30:00Z', status: 'Available' },
+    { startUtc: '2030-01-15T04:00:00Z', endUtc: '2030-01-15T05:00:00Z', status: 'Available' },
+  ],
 };
+
+/**
+ * The same three starts (10:00, 10:30, 11:00 local) on DATE with the given statuses,
+ * plus 09:30 which is always Past (and must not be shown).
+ */
+export function availabilityWith(statuses: [StartTimeStatus, StartTimeStatus, StartTimeStatus]): AvailabilityDto {
+  const starts = ['03:00', '03:30', '04:00'];
+  const times = [
+    { startUtc: '2030-01-15T02:30:00Z', endUtc: '2030-01-15T03:30:00Z', status: 'Past' as const },
+    ...starts.map((hhmm, i) => {
+      const start = new Date(`${DATE}T${hhmm}:00Z`);
+      return {
+        startUtc: start.toISOString().replace('.000Z', 'Z'),
+        endUtc: new Date(start.getTime() + 3_600_000).toISOString().replace('.000Z', 'Z'),
+        status: statuses[i] as StartTimeStatus,
+      };
+    }),
+  ];
+  return {
+    ...availabilityDto,
+    slots: times.filter((t) => t.status === 'Available').map(({ startUtc, endUtc }) => ({ startUtc, endUtc })),
+    times,
+  };
+}
+
+/** One entry per date from..to: before TODAY Past, otherwise Available (3 times) unless overridden. */
+export function availabilityDaysDto(
+  from: string,
+  to: string,
+  overrides: Record<string, DayStatus> = {},
+): AvailabilityDaysDto {
+  const days: AvailabilityDaysDto['days'] = [];
+  for (let t = Date.parse(`${from}T00:00:00Z`); t <= Date.parse(`${to}T00:00:00Z`); t += 86_400_000) {
+    const date = new Date(t).toISOString().slice(0, 10);
+    const status: DayStatus = overrides[date] ?? (date < TODAY ? 'Past' : 'Available');
+    days.push({ date, status, availableCount: status === 'Available' ? 3 : 0 });
+  }
+  return { dealershipId: 1, serviceTypeId: 1, from, to, timeZoneId: TZ, durationMinutes: 60, days };
+}
 
 export function appointmentDto(overrides: Partial<AppointmentDto> = {}): AppointmentDto {
   return {

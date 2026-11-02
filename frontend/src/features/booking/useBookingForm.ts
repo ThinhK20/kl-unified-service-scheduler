@@ -1,13 +1,14 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import type { BookAppointmentRequest } from '../../api/types';
+import type { BookAppointmentRequest, DayStatus, StartTimeStatus } from '../../api/types';
 import { DEMO_CUSTOMER_ID } from '../../config';
 import {
   addMinutes,
   formatIsoDate,
   formatTime,
   formatTimeRange,
+  startOfMonthIso,
   todayInBrowserZone,
   todayInZone,
   toZonedIsoString,
@@ -15,7 +16,7 @@ import {
 import { formatDuration } from '../../lib/formatters';
 import { describeBookingError } from './bookingErrors';
 import { createBookingSchema, emptyBookingForm, type BookingFormValues } from './bookingSchema';
-import { useAvailability } from './useAvailability';
+import { useAvailability, useAvailabilityDays } from './useAvailability';
 import { useBookAppointment } from './useBookAppointment';
 import { useDealerships, useServiceTypes, useVehicles } from './useCatalog';
 
@@ -24,9 +25,29 @@ export interface SlotOption {
   label: string;
 }
 
+/** A start time in the list. Past times are not shown at all. */
+export interface TimeOption extends SlotOption {
+  status: Exclude<StartTimeStatus, 'Past'>;
+}
+
 export type SlotsState = 'idle' | 'loading' | 'error' | 'empty' | 'ready';
+export type DaysState = 'idle' | 'loading' | 'error' | 'ready';
 
 const toId = (value: string): number | null => (value === '' ? null : Number(value));
+
+const NO_NOTE = { trigger: '', text: '' };
+
+function describeStaleDay(isoDate: string, status: DayStatus | null, forCar: boolean): string {
+  const day = formatIsoDate(isoDate);
+  if (status === 'Past') return `${day} has passed. Please pick another day.`;
+  return `${day} is now fully booked${forCar ? ' for this car' : ''}. Please pick another day.`;
+}
+
+function describeStaleTime(time: string, status: StartTimeStatus | null): string {
+  if (status === 'VehicleBooked') return `${time} is no longer available: this car is already booked then. Please pick another time.`;
+  if (status === 'Past') return `${time} has passed. Please pick another time.`;
+  return `${time} is no longer available. Please pick another time.`;
+}
 
 /**
  * Container hook for the booking page: form state, catalog data, availability,
@@ -59,55 +80,128 @@ export function useBookingForm() {
 
   const dealershipId = toId(values.dealershipId ?? '');
   const serviceTypeId = toId(values.serviceTypeId ?? '');
+  const vehicleId = toId(values.vehicleId ?? '');
   const date = values.date ?? '';
   const startKey = values.startTime ?? '';
 
   const serviceTypesQuery = useServiceTypes(dealershipId);
-  const availabilityQuery = useAvailability({ dealershipId, serviceTypeId, date });
 
-  const vehicle = vehiclesQuery.data?.find((v) => v.id === toId(values.vehicleId ?? '')) ?? null;
+  const vehicle = vehiclesQuery.data?.find((v) => v.id === vehicleId) ?? null;
   const dealership = dealershipsQuery.data?.find((d) => d.id === dealershipId) ?? null;
   const serviceType = serviceTypesQuery.data?.find((s) => s.id === serviceTypeId) ?? null;
   const timeZoneId = dealership?.timeZoneId ?? null;
 
   const minDate = timeZoneId ? todayInZone(timeZoneId) : todayInBrowserZone();
 
+  // The month the calendar shows: the dealership's current month until the user pages (null), never before it.
+  const [visibleMonth, setVisibleMonth] = useState<string | null>(null);
+  const calendarMonth =
+    visibleMonth === null || startOfMonthIso(visibleMonth) < startOfMonthIso(minDate) ? minDate : visibleMonth;
+
+  const availabilityQuery = useAvailability({ dealershipId, serviceTypeId, date, vehicleId });
+  const daysQuery = useAvailabilityDays({ dealershipId, serviceTypeId, month: calendarMonth, vehicleId });
+
+  /** One line shown near the times when the app had to clear the user's pick, and what caused it. */
+  const [note, setNote] = useState(NO_NOTE);
+
   // --- field change rules -------------------------------------------------------------
   const clearTime = useCallback(() => {
     setValue('startTime', '');
+    setNote(NO_NOTE);
     resetBooking();
-  }, [setValue, resetBooking]);
+  }, [setValue, resetBooking, setNote]);
 
   const onDealershipChange = useCallback(() => {
     setValue('serviceTypeId', '');
     clearTime();
   }, [setValue, clearTime]);
 
+  const selectDate = useCallback(
+    (isoDate: string) => {
+      if (isoDate === date) return;
+      setValue('date', isoDate, { shouldValidate: formState.isSubmitted });
+      clearTime();
+    },
+    [setValue, clearTime, formState.isSubmitted, date],
+  );
+
   const selectTime = useCallback(
     (key: string) => {
       setValue('startTime', key, { shouldValidate: formState.isSubmitted });
+      setNote(NO_NOTE);
       resetBooking();
     },
-    [setValue, resetBooking, formState.isSubmitted],
+    [setValue, resetBooking, setNote, formState.isSubmitted],
   );
 
+  // --- days (calendar) -----------------------------------------------------------------
+  const canCheckDays = dealershipId !== null && serviceTypeId !== null;
+  const dayStatuses = useMemo(
+    () => (daysQuery.data ? new Map(daysQuery.data.days.map((d) => [d.date, d.status] as const)) : undefined),
+    [daysQuery.data],
+  );
+  let daysState: DaysState = 'idle';
+  if (canCheckDays) {
+    if (daysQuery.isError) daysState = 'error';
+    else if (daysQuery.data) daysState = 'ready';
+    else daysState = 'loading';
+  }
+
   // --- slots ---------------------------------------------------------------------------
-  const slots: SlotOption[] =
-    timeZoneId && availabilityQuery.data
-      ? availabilityQuery.data.slots.map((s) => ({ key: s.key, label: formatTime(s.start, timeZoneId) }))
+  const times = availabilityQuery.data?.times;
+  const slots: TimeOption[] =
+    timeZoneId && times
+      ? times
+          .filter((t): t is typeof t & { status: TimeOption['status'] } => t.status !== 'Past')
+          .map((t) => ({ key: t.key, label: formatTime(t.start, timeZoneId), status: t.status }))
       : [];
+  const hasFreeTime = slots.some((s) => s.status === 'Available');
 
   let slotsState: SlotsState = 'idle';
   if (availabilityQuery.isFetching && !availabilityQuery.data) slotsState = 'loading';
   else if (availabilityQuery.isError) slotsState = 'error';
-  else if (availabilityQuery.data) slotsState = slots.length === 0 ? 'empty' : 'ready';
+  else if (availabilityQuery.data) slotsState = hasFreeTime ? 'ready' : 'empty';
   if (dealershipId === null || serviceTypeId === null || date === '') slotsState = 'idle';
+
+  // --- keep the pick valid when availability changes (other car, a 409, a refetch) --------
+  // The data is keyed by vehicle, so it always describes the car that is chosen now.
+  const selectedTimeStatus: StartTimeStatus | null =
+    startKey && times ? (times.find((t) => t.key === startKey)?.status ?? null) : null;
+  const selectedDayStatus: DayStatus | null = date ? (dayStatuses?.get(date) ?? null) : null;
+  // After a 201 the refetch shows the just-booked time as taken; the form is behind the confirmation then.
+  const isConfirmed = booking.appointment !== null;
+  const staleDay = !isConfirmed && selectedDayStatus !== null && selectedDayStatus !== 'Available';
+  const staleTime = !isConfirmed && !staleDay && selectedTimeStatus !== null && selectedTimeStatus !== 'Available' && timeZoneId !== null;
+  const staleTrigger = staleDay
+    ? `day|${date}|${selectedDayStatus}|${vehicleId}`
+    : staleTime
+      ? `time|${startKey}|${selectedTimeStatus}|${vehicleId}`
+      : '';
+
+  // Record the note while rendering (React's "adjust state when a value changes" pattern) ...
+  if (staleTrigger && note.trigger !== staleTrigger) {
+    setNote({
+      trigger: staleTrigger,
+      text: staleDay
+        ? describeStaleDay(date, selectedDayStatus, vehicleId !== null)
+        : describeStaleTime(formatTime(new Date(startKey), timeZoneId ?? 'UTC'), selectedTimeStatus),
+    });
+  }
+  // ... and clear the form values after the render. The booking error box (and its suggestions) stays.
+  useEffect(() => {
+    if (staleDay) {
+      setValue('date', '');
+      setValue('startTime', '');
+    } else if (staleTime) {
+      setValue('startTime', '');
+    }
+  }, [staleDay, staleTime, setValue]);
 
   // --- summary -------------------------------------------------------------------------
   const start = startKey ? new Date(startKey) : null;
   const end =
     start && serviceType
-      ? (availabilityQuery.data?.slots.find((s) => s.key === startKey)?.end ??
+      ? (times?.find((s) => s.key === startKey)?.end ??
         addMinutes(start, serviceType.durationMinutes))
       : null;
 
@@ -141,8 +235,10 @@ export function useBookingForm() {
 
   const startOver = useCallback(() => {
     resetForm(emptyBookingForm);
+    setNote(NO_NOTE);
+    setVisibleMonth(null);
     resetBooking();
-  }, [resetForm, resetBooking]);
+  }, [resetForm, resetBooking, setNote, setVisibleMonth]);
 
   return {
     form,
@@ -156,9 +252,18 @@ export function useBookingForm() {
     serviceTypes: serviceTypesQuery.data ?? [],
     hasDealership: dealershipId !== null,
     onDealershipChange,
-    onServiceOrDateChange: clearTime,
+    onServiceChange: clearTime,
+    calendarMonth,
+    onMonthChange: setVisibleMonth,
+    dayStatuses,
+    daysState,
+    refetchDays: () => void daysQuery.refetch(),
+    canPickDate: canCheckDays,
+    selectDate,
+    selectedDate: date,
     slots,
     slotsState,
+    availabilityNote: note.text,
     refetchSlots: () => void availabilityQuery.refetch(),
     selectedSlotKey: startKey,
     selectTime,

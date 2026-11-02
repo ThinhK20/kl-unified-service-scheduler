@@ -86,12 +86,43 @@ public sealed class DaySchedule
     /// Every grid start time in opening hours, after <paramref name="afterUtc"/>, where at least one pair is free
     /// for the full duration. Ascending.
     /// </summary>
-    public IReadOnlyList<TimeRange> FreeRanges(DateTime afterUtc)
+    public IReadOnlyList<TimeRange> FreeRanges(DateTime afterUtc) =>
+        ClassifyStartTimes(afterUtc)
+            .Where(time => time.Status == StartTimeStatus.Available)
+            .Select(time => time.Range)
+            .ToList();
+
+    /// <summary>
+    /// Every grid start time in opening hours where the whole job fits before closing (the same candidates as
+    /// <see cref="FreeRanges"/>), ascending, each with its status (SPEC section 6). First match wins:
+    /// <see cref="StartTimeStatus.Past"/> (start &lt;= <paramref name="afterUtc"/>),
+    /// <see cref="StartTimeStatus.VehicleBooked"/> (only when <paramref name="vehicleSlotStartsUtc"/> is given, see
+    /// <see cref="IsVehicleBusy"/>), <see cref="StartTimeStatus.Booked"/> (<see cref="FindPairs"/> is empty),
+    /// else <see cref="StartTimeStatus.Available"/>. These are the checks booking makes, in booking's order
+    /// (SPEC section 5), so the screen and the booking endpoint agree on the same snapshot.
+    /// </summary>
+    /// <param name="afterUtc">Usually "now": starts at or before it are past.</param>
+    /// <param name="vehicleSlotStartsUtc">The car's slot starts (any dealership), or null to ignore the car.</param>
+    public IReadOnlyList<ClassifiedStartTime> ClassifyStartTimes(
+        DateTime afterUtc,
+        IReadOnlyCollection<DateTime>? vehicleSlotStartsUtc = null)
     {
         var after = UtcTime.Normalize(afterUtc);
+        var vehicleSlots = vehicleSlotStartsUtc?.Select(UtcTime.Normalize).ToList();
         return CandidateRanges()
-            .Where(range => range.StartUtc > after && FindPairs(range).Count > 0)
+            .Select(range => new ClassifiedStartTime(range, Classify(range, after, vehicleSlots)))
             .ToList();
+    }
+
+    /// <summary>
+    /// In-memory twin of <see cref="IAppointmentRepository.IsVehicleBookedAsync"/> (the check booking makes):
+    /// true when any of the vehicle's slot starts is in the half-open <paramref name="range"/> (&gt;= start and &lt; end).
+    /// </summary>
+    public static bool IsVehicleBusy(IEnumerable<DateTime> vehicleSlotStartsUtc, TimeRange range)
+    {
+        ArgumentNullException.ThrowIfNull(vehicleSlotStartsUtc);
+        ArgumentNullException.ThrowIfNull(range);
+        return vehicleSlotStartsUtc.Any(slot => range.Contains(UtcTime.Normalize(slot)));
     }
 
     /// <summary>
@@ -130,6 +161,22 @@ public sealed class DaySchedule
         {
             yield return TimeRange.FromStart(start, duration);
         }
+    }
+
+    private StartTimeStatus Classify(TimeRange range, DateTime afterUtc, IReadOnlyList<DateTime>? vehicleSlotStartsUtc)
+    {
+        // SPEC section 6, same order as booking (SPEC section 5): future start, then the car, then a free pair.
+        if (range.StartUtc <= afterUtc)
+        {
+            return StartTimeStatus.Past;
+        }
+
+        if (vehicleSlotStartsUtc is not null && IsVehicleBusy(vehicleSlotStartsUtc, range))
+        {
+            return StartTimeStatus.VehicleBooked;
+        }
+
+        return FindPairs(range).Count > 0 ? StartTimeStatus.Available : StartTimeStatus.Booked;
     }
 
     private bool IsFree(ResourceType type, int id, IReadOnlyList<DateTime> slots) =>

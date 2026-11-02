@@ -1,8 +1,8 @@
 // The one-click guided tour for the live preview. It drives the real app through the DOM, the same way a
-// person would: it picks options, types the date, clicks time slots and buttons, and waits for the
+// person would: it picks options, clicks a day in the calendar, time slots and buttons, and waits for the
 // (simulated) API to answer. Nothing in the app is mocked or skipped; only the clicks are scripted.
 
-import { addDays, localToUtc, type MockSchedulerBackend } from './mockBackend';
+import { addDays, localDateOf, localToUtc, type MockSchedulerBackend } from './mockBackend';
 import { TIME_ZONE } from './seed';
 
 export interface TourStep {
@@ -29,7 +29,7 @@ export class TourStopped extends Error {
   }
 }
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 
 export async function runTour(options: TourOptions): Promise<void> {
   const { backend, resetApp, onStep, signal } = options;
@@ -112,21 +112,34 @@ export async function runTour(options: TourOptions): Promise<void> {
     await sleep(500);
   };
 
-  const typeDate = async (label: string, value: string) => {
-    const input = await waitFor(() => fieldByLabel<HTMLInputElement>(label), `the "${label}" field`);
-    await point(input);
-    setNativeValue(input, value);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-    release(input);
-    await sleep(500);
+  /** Clicks the day ("YYYY-MM-DD") in the calendar, paging forward a month when it is not on screen. */
+  const pickDay = async (isoDate: string) => {
+    const dayButton = () =>
+      root.querySelector<HTMLButtonElement>(`.cal__day[data-day="${isoDate}"] .cal__day-button:not(:disabled)`);
+    for (let page = 0; page < 3 && !dayButton(); page++) {
+      const next = await waitFor(
+        () => root.querySelector<HTMLButtonElement>('.cal__nav-button--next:not([aria-disabled="true"]):not(:disabled)'),
+        'the next month button',
+      );
+      await click(next);
+    }
+    const day = await waitFor(
+      () => {
+        const button = dayButton();
+        return button && button.getAttribute('aria-disabled') !== 'true' ? button : null;
+      },
+      `the day ${isoDate} in the calendar`,
+    );
+    await click(day);
   };
 
-  const pickSlot = async (label: string) => {
-    const slot = await waitFor(
-      () => Array.from(root.querySelectorAll<HTMLButtonElement>('.slots__grid .slot')).find((b) => text(b) === label),
-      `the ${label} time slot`,
+  const findSlot = (label: string, selector = '.slot:not([aria-disabled="true"])') =>
+    Array.from(root.querySelectorAll<HTMLButtonElement>(`.slots__grid ${selector}`)).find(
+      (b) => text(b.querySelector('.slot__time') ?? b) === label,
     );
+
+  const pickSlot = async (label: string) => {
+    const slot = await waitFor(() => findSlot(label), `the ${label} time slot`);
     await click(slot);
   };
 
@@ -134,7 +147,7 @@ export async function runTour(options: TourOptions): Promise<void> {
     await choose('Vehicle', vehicle);
     await choose('Service centre', 'District 1');
     await choose('Service type', service);
-    await typeDate('Date', date);
+    await pickDay(date);
   };
 
   const book = async () => {
@@ -152,11 +165,12 @@ export async function runTour(options: TourOptions): Promise<void> {
     step(1, 'Starting fresh', 'Resetting the demo data so every run looks the same.');
     resetApp();
     await sleep(900);
-    const dateInput = await waitFor(() => fieldByLabel<HTMLInputElement>('Date'), 'the booking form');
-    const demoDate = addDays(dateInput.min || new Date().toISOString().slice(0, 10), 1);
+    await waitFor(() => root.querySelector('.cal'), 'the booking form');
+    // Tomorrow in the dealership's time zone (the calendar pages to next month when needed).
+    const demoDate = addDays(localDateOf(Date.now(), TIME_ZONE), 1);
 
     // 2. First booking.
-    step(2, 'Booking an EV battery check', 'Toyota Vios at District 1, tomorrow. Only free start times are offered.');
+    step(2, 'Booking an EV battery check', 'Toyota Vios at District 1, tomorrow. Fully booked days and taken times cannot be picked.');
     await fillBooking('Toyota', 'EV battery check', demoDate);
     await pickSlot('10:00');
     await book();
@@ -171,11 +185,19 @@ export async function runTour(options: TourOptions): Promise<void> {
     await sleep(2600);
     release(root.querySelector<HTMLElement>('.confirm__grid')!);
 
-    // 4. Second booking, with a race.
+    // 4. The same car cannot be booked twice at once: the time is shown, disabled, with the reason.
     const another = await waitFor(() => findButton('Book another service'), 'Book another service');
     await click(another);
-    step(4, 'A second booking, and someone is faster', 'Honda CR-V, same service, 11:00. While we fill the form, another customer takes 11:00.');
-    await fillBooking('Honda', 'EV battery check', demoDate);
+    step(4, 'One car, one place at a time', 'Same service and day for the Toyota again: 10:00 is shown but disabled, because this car is already booked then.');
+    await fillBooking('Toyota', 'EV battery check', demoDate);
+    const carBooked = await waitFor(() => findSlot('10:00', '.slot--car-booked'), 'the 10:00 "Your car is booked" time');
+    await point(carBooked);
+    await sleep(2600);
+    release(carBooked);
+
+    // 5. Second booking, with a race.
+    step(5, 'A second booking, and someone is faster', 'Switching to the Honda CR-V, 11:00. While we fill the form, another customer takes 11:00.');
+    await choose('Vehicle', 'Honda');
     await pickSlot('11:00');
     backend.simulateOtherCustomerBooking(1, 4, localToUtc(demoDate, '11:00', TIME_ZONE));
     await sleep(600);
@@ -187,7 +209,7 @@ export async function runTour(options: TourOptions): Promise<void> {
       },
       'the suggested times',
     );
-    step(5, 'No double booking: 409 with suggestions', 'The slot was taken a moment ago, so the API refused it and offered the nearest free times.');
+    step(6, 'No double booking: 409 with suggestions', 'The slot was taken a moment ago, so the API refused it, the list now shows 11:00 as booked, and the nearest free times are offered.');
     await point(suggestion.closest('.alert') as HTMLElement);
     await sleep(2600);
     release(suggestion.closest('.alert') as HTMLElement);
@@ -197,7 +219,7 @@ export async function runTour(options: TourOptions): Promise<void> {
     await sleep(1800);
 
     // 6. Cancel the first booking.
-    step(6, 'Cancelling the first booking', 'Cancel asks for confirmation, then frees the technician, bay and car.');
+    step(7, 'Cancelling the first booking', 'Cancel asks for confirmation, then frees the technician, bay and car.');
     await click(await waitFor(() => findButton('View my appointments'), 'View my appointments'));
     const card = await waitFor(
       () => Array.from(root.querySelectorAll<HTMLElement>('article.appt')).find((a) => firstRef && text(a).includes(firstRef)),
@@ -211,7 +233,7 @@ export async function runTour(options: TourOptions): Promise<void> {
     await sleep(1500);
     release(card);
 
-    step(7, 'Tour complete', 'Everything you saw ran through the real screens. Try it yourself, or reset the data.');
+    step(8, 'Tour complete', 'Everything you saw ran through the real screens. Try it yourself, or reset the data.');
   } finally {
     cursor.remove();
     root.querySelectorAll('.demo-target').forEach((el) => el.classList.remove('demo-target'));

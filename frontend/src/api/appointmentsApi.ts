@@ -5,12 +5,20 @@ import type {
   Appointment,
   AppointmentDto,
   Availability,
+  AvailabilityDays,
+  AvailabilityDaysDto,
   AvailabilityDto,
   BookAppointmentRequest,
+  DayAvailability,
+  DayAvailabilityDto,
+  DayStatus,
   Dealership,
   DealershipDto,
   ServiceType,
   ServiceTypeDto,
+  StartTime,
+  StartTimeDto,
+  StartTimeStatus,
   TimeSlot,
   Vehicle,
   VehicleDto,
@@ -25,14 +33,50 @@ export function toTimeSlot(startUtc: string, endUtc: string): TimeSlot {
   return { key: start.toISOString(), start, end: new Date(endUtc) };
 }
 
+const START_TIME_STATUSES: ReadonlySet<string> = new Set<StartTimeStatus>(['Past', 'VehicleBooked', 'Booked', 'Available']);
+const DAY_STATUSES: ReadonlySet<string> = new Set<DayStatus>(['Past', 'FullyBooked', 'Available']);
+
+/** An unknown status is never offered as bookable. */
+function toStartTimeStatus(value: string): StartTimeStatus {
+  return START_TIME_STATUSES.has(value) ? (value as StartTimeStatus) : 'Booked';
+}
+
+function toDayStatus(dto: DayAvailabilityDto): DayStatus {
+  if (DAY_STATUSES.has(dto.status)) return dto.status;
+  return dto.availableCount > 0 ? 'Available' : 'FullyBooked';
+}
+
+export function toStartTime(dto: StartTimeDto): StartTime {
+  return { ...toTimeSlot(dto.startUtc, dto.endUtc), status: toStartTimeStatus(dto.status) };
+}
+
 export function toAvailability(dto: AvailabilityDto): Availability {
+  const slots = dto.slots.map((s) => toTimeSlot(s.startUtc, s.endUtc));
   return {
     dealershipId: dto.dealershipId,
     serviceTypeId: dto.serviceTypeId,
     date: dto.date,
     timeZoneId: dto.timeZoneId,
     durationMinutes: dto.durationMinutes,
-    slots: dto.slots.map((s) => toTimeSlot(s.startUtc, s.endUtc)),
+    slots,
+    // An API without `times` (before contract v2) only knows the free starts.
+    times: dto.times ? dto.times.map(toStartTime) : slots.map((s) => ({ ...s, status: 'Available' as const })),
+  };
+}
+
+export function toDayAvailability(dto: DayAvailabilityDto): DayAvailability {
+  return { date: dto.date, availableCount: dto.availableCount, status: toDayStatus(dto) };
+}
+
+export function toAvailabilityDays(dto: AvailabilityDaysDto): AvailabilityDays {
+  return {
+    dealershipId: dto.dealershipId,
+    serviceTypeId: dto.serviceTypeId,
+    from: dto.from,
+    to: dto.to,
+    timeZoneId: dto.timeZoneId,
+    durationMinutes: dto.durationMinutes,
+    days: dto.days.map(toDayAvailability),
   };
 }
 
@@ -72,15 +116,34 @@ export async function getCustomerVehicles(customerId: number, signal?: AbortSign
 }
 
 export async function getAvailability(
-  params: { dealershipId: number; serviceTypeId: number; date: string },
+  params: { dealershipId: number; serviceTypeId: number; date: string; vehicleId?: number | null },
   signal?: AbortSignal,
 ): Promise<Availability> {
   const query = new URLSearchParams({ serviceTypeId: String(params.serviceTypeId), date: params.date });
+  if (params.vehicleId != null) query.set('vehicleId', String(params.vehicleId));
   const dto = await apiRequest<AvailabilityDto>(
     `/api/dealerships/${params.dealershipId}/availability?${query.toString()}`,
     { signal },
   );
   return toAvailability(dto);
+}
+
+/** Per-day status for an inclusive range of dealership-local dates (at most 42 days). */
+export async function getAvailabilityDays(
+  params: { dealershipId: number; serviceTypeId: number; from: string; to: string; vehicleId?: number | null },
+  signal?: AbortSignal,
+): Promise<AvailabilityDays> {
+  const query = new URLSearchParams({
+    serviceTypeId: String(params.serviceTypeId),
+    from: params.from,
+    to: params.to,
+  });
+  if (params.vehicleId != null) query.set('vehicleId', String(params.vehicleId));
+  const dto = await apiRequest<AvailabilityDaysDto>(
+    `/api/dealerships/${params.dealershipId}/availability/days?${query.toString()}`,
+    { signal },
+  );
+  return toAvailabilityDays(dto);
 }
 
 export async function bookAppointment(request: BookAppointmentRequest, idempotencyKey: string): Promise<Appointment> {

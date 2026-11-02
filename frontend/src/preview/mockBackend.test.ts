@@ -85,6 +85,176 @@ describe('availability (same counts as the real API)', () => {
   });
 });
 
+type Time = { startUtc: string; endUtc: string; status: string };
+type Day = { date: string; availableCount: number; status: string };
+
+describe('availability v2: times with a status (contract section 1)', () => {
+  const times = (body: unknown) => (body as { times: Time[] }).times;
+  const statusAt = (list: Time[], hhmm: string) => list.find((t) => t.startUtc === utc(hhmm))?.status;
+  const day = (dealershipId: number, serviceTypeId: number, vehicleId?: number | string, date = DAY) =>
+    `/api/dealerships/${dealershipId}/availability?serviceTypeId=${serviceTypeId}&date=${date}` +
+    (vehicleId === undefined ? '' : `&vehicleId=${vehicleId}`);
+
+  it('lists every grid start; slots are exactly the Available times', () => {
+    const { call, book } = setup();
+    book(1, 4, at('10:00')); // Lan + EV bay busy 10:00-11:00
+    const body = call('GET', day(1, 4)).body as unknown as { slots: { startUtc: string }[]; times: Time[] };
+    expect(body.times).toHaveLength(33); // 08:00..16:00
+    expect(body.times.map((t) => t.startUtc)).toEqual([...body.times.map((t) => t.startUtc)].sort());
+    expect(body.times[0]).toEqual({ startUtc: utc('08:00'), endUtc: utc('09:00'), status: 'Available' });
+    expect(statusAt(body.times, '09:15')).toBe('Booked');
+    expect(statusAt(body.times, '10:45')).toBe('Booked');
+    expect(statusAt(body.times, '11:00')).toBe('Available');
+    expect(body.slots).toEqual(body.times.filter((t) => t.status === 'Available').map(({ startUtc, endUtc }) => ({ startUtc, endUtc })));
+  });
+
+  it('without vehicleId the slots are unchanged from v1; with it they are car-aware', () => {
+    const { call, book } = setup();
+    book(1, 1, at('13:00')); // the Toyota has an oil change 13:00-14:00 (Minh + Bay 1)
+    const v1 = call('GET', day(1, 4)).body as unknown as { slots: unknown[]; times: Time[] };
+    expect(v1.slots).toHaveLength(33);
+    const toyota = times(call('GET', day(1, 4, 1)).body);
+    expect(statusAt(toyota, '12:15')).toBe('VehicleBooked');
+    expect(statusAt(toyota, '13:45')).toBe('VehicleBooked');
+    expect(statusAt(toyota, '12:00')).toBe('Available'); // ends exactly at 13:00
+    expect(statusAt(toyota, '14:00')).toBe('Available');
+    expect((call('GET', day(1, 4, 1)).body as unknown as { slots: unknown[] }).slots).toHaveLength(33 - 7);
+    expect(times(call('GET', day(1, 4, 2)).body).every((t) => t.status === 'Available')).toBe(true);
+  });
+
+  it('first match wins: Past over VehicleBooked over Booked', () => {
+    const { call, book, setNow } = setup();
+    book(1, 4, at('10:00')); // Toyota holds Lan + EV bay 10:00-11:00: Booked AND VehicleBooked for the Toyota
+    expect(statusAt(times(call('GET', day(1, 4, 1)).body), '10:00')).toBe('VehicleBooked');
+    expect(statusAt(times(call('GET', day(1, 4, 2)).body), '10:00')).toBe('Booked');
+    setNow(`${utc('10:00')}`); // start <= now is Past
+    const later = times(call('GET', day(1, 4, 1)).body);
+    expect(statusAt(later, '10:00')).toBe('Past');
+    expect(statusAt(later, '10:15')).toBe('VehicleBooked');
+    expect(later.filter((t) => t.status === 'Past')).toHaveLength(9); // 08:00..10:00
+  });
+
+  it('every Available time books with 201 for that vehicle; Past, VehicleBooked and Booked do not', () => {
+    const nowIso = '2030-01-15T02:40:00Z'; // 09:40 local: 08:00..09:30 have passed
+    const { backend, call, book } = setup(nowIso);
+    expect(book(1, 1, at('13:00')).status).toBe(201); // Toyota busy 13:00-14:00
+    expect(book(2, 4, at('11:00')).status).toBe(201); // Lan + EV bay busy 11:00-12:00
+    const snapshot = backend.snapshot();
+    const list = times(call('GET', day(1, 4, 1)).body);
+    expect(new Set(list.map((t) => t.status))).toEqual(new Set(['Past', 'Available', 'Booked', 'VehicleBooked']));
+    expect(list.filter((t) => t.status === 'Past')).toHaveLength(7);
+    for (const t of list) {
+      const fresh = new MockSchedulerBackend({ state: snapshot, now: () => Date.parse(nowIso) });
+      const response = fresh.handle({
+        method: 'POST',
+        url: '/api/appointments',
+        headers: { 'idempotency-key': `k-${t.startUtc}` },
+        body: JSON.stringify({ customerId: 1, vehicleId: 1, dealershipId: 1, serviceTypeId: 4, startTime: t.startUtc }),
+      });
+      const expected = { Past: 400, Available: 201, Booked: 409, VehicleBooked: 409 }[t.status];
+      expect([t.startUtc, t.status, response.status]).toEqual([t.startUtc, t.status, expected]);
+      if (t.status === 'Past') expect((response.body as { detail: string }).detail).toBe('startTime must be in the future.');
+      if (t.status === 'VehicleBooked') expect((response.body as { code: string }).code).toBe('VEHICLE_ALREADY_BOOKED');
+      if (t.status === 'Booked') expect((response.body as { code: string }).code).toBe('NO_AVAILABILITY');
+    }
+  });
+
+  it('validates vehicleId: positive integer, known vehicle', () => {
+    const { call } = setup();
+    for (const bad of ['0', '-1', 'abc', '1.5']) {
+      expect(call('GET', day(1, 4, bad)).body).toMatchObject({
+        status: 400,
+        code: 'INVALID_REQUEST',
+        detail: 'vehicleId must be a positive number.',
+        errors: { vehicleId: ['vehicleId must be a positive number.'] },
+      });
+    }
+    expect(call('GET', day(1, 4, 99)).body).toMatchObject({ status: 404, code: 'NOT_FOUND', detail: 'Vehicle 99 was not found.' });
+    expect(call('GET', day(9, 4, 99)).body).toMatchObject({ status: 404, detail: 'Dealership 9 was not found.' });
+    expect(call('GET', day(1, 4, '')).status).toBe(400); // present but empty = 400, like the real API
+    expect(call('GET', day(1, 4, '2147483648')).status).toBe(400); // larger than an int
+  });
+});
+
+describe('availability v2: days (contract section 2)', () => {
+  const daysUrl = (from: string, to: string, extra = '', serviceTypeId = 4) =>
+    `/api/dealerships/1/availability/days?serviceTypeId=${serviceTypeId}&from=${from}&to=${to}${extra}`;
+  const days = (body: unknown) => (body as { days: Day[] }).days;
+
+  it('returns one entry per date, Past before today, FullyBooked when nothing is Available', () => {
+    const { call, book, setNow } = setup();
+    // Fill the whole of 2030-01-20 for the EV service (one technician, one bay): 08:00, 09:00, ... 16:00.
+    for (let h = 8; h <= 16; h++) expect(book(h % 2 ? 1 : 2, 4, at(`${String(h).padStart(2, '0')}:00`, '2030-01-20')).status).toBe(201);
+    setNow('2030-01-15T09:30:00Z'); // 16:30 local on the 15th: every start that day has passed
+    const body = call('GET', daysUrl('2030-01-13', '2030-01-21')).body as unknown as Record<string, unknown>;
+    expect(body).toMatchObject({ dealershipId: 1, serviceTypeId: 4, from: '2030-01-13', to: '2030-01-21', timeZoneId: 'Asia/Ho_Chi_Minh', durationMinutes: 60 });
+    expect(days(body).map((d) => [d.date, d.status, d.availableCount])).toEqual([
+      ['2030-01-13', 'Past', 0],
+      ['2030-01-14', 'Past', 0],
+      ['2030-01-15', 'FullyBooked', 0], // today, all passed
+      ['2030-01-16', 'Available', 33],
+      ['2030-01-17', 'Available', 33],
+      ['2030-01-18', 'Available', 33],
+      ['2030-01-19', 'Available', 33],
+      ['2030-01-20', 'FullyBooked', 0],
+      ['2030-01-21', 'Available', 33],
+    ]);
+  });
+
+  it('gives the same answer as the day endpoint for each date, with and without a vehicle', () => {
+    const { call, book, setNow } = setup();
+    book(1, 4, at('10:00', '2030-01-16'));
+    book(2, 1, at('14:00', '2030-01-17'));
+    book(1, 2, at('09:00', '2030-01-31'));
+    setNow('2030-01-16T02:20:00Z'); // 09:20 local on the 16th
+    for (const extra of ['', '&vehicleId=1', '&vehicleId=2']) {
+      for (const service of [1, 2, 3, 4]) {
+        const list = days(call('GET', daysUrl('2030-01-01', '2030-02-11', extra, service)).body);
+        expect(list).toHaveLength(42);
+        for (const d of list) {
+          const one = call('GET', `/api/dealerships/1/availability?serviceTypeId=${service}&date=${d.date}${extra}`).body as unknown as {
+            times: Time[];
+          };
+          const count = one.times.filter((t) => t.status === 'Available').length;
+          expect([d.date, d.availableCount]).toEqual([d.date, d.status === 'Past' ? 0 : count]);
+          if (d.status === 'Past') expect(d.date < '2030-01-16').toBe(true);
+          else expect(d.status).toBe(count === 0 ? 'FullyBooked' : 'Available');
+        }
+      }
+    }
+  });
+
+  it('validates the range with the contract messages', () => {
+    const { call } = setup();
+    const err = (url: string) => call('GET', url).body;
+    expect(err(daysUrl('2030-01-10', '2030-01-09'))).toMatchObject({
+      status: 400,
+      code: 'INVALID_REQUEST',
+      detail: 'to must be on or after from.',
+      errors: { to: ['to must be on or after from.'] },
+    });
+    expect(err(daysUrl('2030-01-01', '2030-02-12')).detail).toBe('The range can be at most 42 days.');
+    expect(call('GET', daysUrl('2030-01-01', '2030-02-11')).status).toBe(200); // exactly 42
+    expect(call('GET', daysUrl('2030-01-10', '2030-01-10')).status).toBe(200);
+    expect(err('/api/dealerships/1/availability/days?serviceTypeId=4&to=2030-01-10').detail).toBe('from is required.');
+    expect(err(daysUrl('2030-1-01', '2030-01-10')).detail).toBe('from must be in the format YYYY-MM-DD.');
+    expect(err(daysUrl('2030-01-01', '1999-12-31')).detail).toBe('to must be between the years 2000 and 9998.');
+    expect(err('/api/dealerships/1/availability/days?serviceTypeId=0&from=2030-01-01&to=2030-01-02')).toMatchObject({
+      detail: 'serviceTypeId is required.',
+    });
+    const many = err('/api/dealerships/1/availability/days?vehicleId=0');
+    expect(many.detail).toBe('The request is not valid. See the field errors.');
+    expect(Object.keys(many.errors as object)).toEqual(['serviceTypeId', 'from', 'to', 'vehicleId']);
+    expect(err(daysUrl('2030-01-01', '2030-01-02', '&vehicleId=0')).detail).toBe('vehicleId must be a positive number.');
+    expect(err(daysUrl('2030-01-01', '2030-01-02', '&vehicleId=7'))).toMatchObject({ status: 404, detail: 'Vehicle 7 was not found.' });
+    expect(err('/api/dealerships/9/availability/days?serviceTypeId=4&from=2030-01-01&to=2030-01-02')).toMatchObject({ status: 404, detail: 'Dealership 9 was not found.' });
+    expect(err('/api/dealerships/2/availability/days?serviceTypeId=4&from=2030-01-01&to=2030-01-02')).toMatchObject({
+      status: 422,
+      detail: 'The service type is not offered at this dealership.',
+    });
+  });
+});
+
 describe('booking and allocation (ScarcityAwareStrategy)', () => {
   it('oil change 10:00 goes to Nam, then EV battery check 10:00 goes to Lan', () => {
     const { book } = setup();

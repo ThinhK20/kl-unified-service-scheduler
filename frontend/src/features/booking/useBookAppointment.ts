@@ -19,17 +19,22 @@ export function useBookAppointment() {
   const queryClient = useQueryClient();
   const lastAttempt = useRef<BookingAttempt | null>(null);
 
+  const invalidateAvailability = () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.availabilityAll });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.availabilityDaysAll });
+  };
+
   const mutation = useMutation<Appointment, Error, BookingAttempt>({
     mutationFn: ({ request, idempotencyKey }) => bookAppointment(request, idempotencyKey),
     retry: false,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.appointmentsAll });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.availabilityAll });
+      invalidateAvailability();
     },
     onError: (error) => {
-      // Someone took the time: the free-times list is out of date.
-      if (isApiError(error) && error.code === 'NO_AVAILABILITY') {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.availabilityAll });
+      // Someone took the time, or the car is busy then: the times and days shown are out of date.
+      if (isApiError(error) && (error.code === 'NO_AVAILABILITY' || error.code === 'VEHICLE_ALREADY_BOOKED')) {
+        invalidateAvailability();
       }
     },
   });

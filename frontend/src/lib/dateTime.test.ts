@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addDaysToIsoDate,
+  addMonthsIso,
+  calendarDateToIsoDate,
+  endOfMonthIso,
   formatIsoDate,
   formatLongDate,
   formatTime,
@@ -8,6 +12,8 @@ import {
   getMonthAndDay,
   getTimeZoneOffsetMinutes,
   isIsoDate,
+  isoDateToCalendarDate,
+  startOfMonthIso,
   todayInZone,
   toIsoDateInZone,
   toZonedIsoString,
@@ -100,5 +106,23 @@ describe('getCardDate', () => {
   it('decides the year in the dealership zone', () => {
     // 2026-12-31T18:00Z is already 1 Jan 2027 in Ho Chi Minh City.
     expect(getCardDate(new Date('2026-12-31T18:00:00Z'), HCM, now).year).toBe('2027');
+  });
+});
+
+describe('calendar date helpers', () => {
+  it('adds days and months across month and year ends', () => {
+    expect(addDaysToIsoDate('2026-11-30', 1)).toBe('2026-12-01');
+    expect(addDaysToIsoDate('2026-03-01', -1)).toBe('2026-02-28');
+    expect(addMonthsIso('2026-11-10', 2)).toBe('2027-01-01');
+    expect(addMonthsIso('2026-01-31', -1)).toBe('2025-12-01');
+    expect(startOfMonthIso('2026-11-10')).toBe('2026-11-01');
+    expect(endOfMonthIso('2028-02-10')).toBe('2028-02-29');
+    expect(endOfMonthIso('2026-12-05')).toBe('2026-12-31');
+  });
+
+  it('round-trips a calendar date through a browser-local Date (New York has DST in November)', () => {
+    for (const iso of ['2026-11-01', '2026-03-08', '2030-01-15']) {
+      expect(calendarDateToIsoDate(isoDateToCalendarDate(iso))).toBe(iso);
+    }
   });
 });

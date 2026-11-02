@@ -36,13 +36,42 @@ export interface SlotDto {
   endUtc: UtcIsoString;
 }
 
+/** Status of one candidate start time (availability contract v2, section 1). First match wins, in this order. */
+export type StartTimeStatus = 'Past' | 'VehicleBooked' | 'Booked' | 'Available';
+
+export interface StartTimeDto extends SlotDto {
+  status: StartTimeStatus;
+}
+
 export interface AvailabilityDto {
   dealershipId: number;
   serviceTypeId: number;
   date: IsoDate;
   timeZoneId: string;
   durationMinutes: number;
+  /** Exactly the `times` with status "Available". */
   slots: SlotDto[];
+  /** Every 15-minute grid start of the day, ascending. Optional so an older API still parses. */
+  times?: StartTimeDto[];
+}
+
+/** Status of one dealership-local day (availability contract v2, section 2). */
+export type DayStatus = 'Past' | 'FullyBooked' | 'Available';
+
+export interface DayAvailabilityDto {
+  date: IsoDate;
+  availableCount: number;
+  status: DayStatus;
+}
+
+export interface AvailabilityDaysDto {
+  dealershipId: number;
+  serviceTypeId: number;
+  from: IsoDate;
+  to: IsoDate;
+  timeZoneId: string;
+  durationMinutes: number;
+  days: DayAvailabilityDto[];
 }
 
 export interface BookAppointmentRequest {
@@ -196,6 +225,10 @@ export interface TimeSlot {
   end: Date;
 }
 
+export interface StartTime extends TimeSlot {
+  status: StartTimeStatus;
+}
+
 export interface Availability {
   dealershipId: number;
   serviceTypeId: number;
@@ -203,6 +236,24 @@ export interface Availability {
   timeZoneId: string;
   durationMinutes: number;
   slots: TimeSlot[];
+  /** Every candidate start of the day with its status, ascending. */
+  times: StartTime[];
+}
+
+export interface DayAvailability {
+  date: IsoDate;
+  availableCount: number;
+  status: DayStatus;
+}
+
+export interface AvailabilityDays {
+  dealershipId: number;
+  serviceTypeId: number;
+  from: IsoDate;
+  to: IsoDate;
+  timeZoneId: string;
+  durationMinutes: number;
+  days: DayAvailability[];
 }
 
 export interface Appointment {

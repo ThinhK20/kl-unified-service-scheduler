@@ -189,7 +189,8 @@ needs an offset (for example `"2026-11-10T10:30:00+07:00"`).
 | GET | /api/dealerships | 200 |
 | GET | /api/service-types?dealershipId= | 200, 400 |
 | GET | /api/customers/{id}/vehicles | 200, 404 |
-| GET | /api/dealerships/{id}/availability?serviceTypeId=&date=YYYY-MM-DD | 200, 400, 404, 422 |
+| GET | /api/dealerships/{id}/availability?serviceTypeId=&date=YYYY-MM-DD[&vehicleId=] | 200, 400, 404, 422 |
+| GET | /api/dealerships/{id}/availability/days?serviceTypeId=&from=&to=[&vehicleId=] | 200, 400, 404, 422 |
 | POST | /api/appointments (header `Idempotency-Key`) | 201, 400, 404, 409, 422, 503 |
 | GET | /api/appointments?customerId= | 200, 400 |
 | GET | /api/appointments/{id} | 200, 404 |
@@ -200,13 +201,32 @@ needs an offset (for example `"2026-11-10T10:30:00+07:00"`).
 DealershipDto   { id; name; timeZoneId; openTime: "HH:mm"; closeTime: "HH:mm" }
 ServiceTypeDto  { id; dealershipId; name; durationMinutes; requiredSkill; minimumTier; requiredBayType }
 VehicleDto      { id; customerId; vin; make; model; year }
-AvailabilityDto { dealershipId; serviceTypeId; date; timeZoneId; durationMinutes; slots: { startUtc; endUtc }[] }
+AvailabilityDto { dealershipId; serviceTypeId; date; timeZoneId; durationMinutes;
+                  slots: { startUtc; endUtc }[];                                  // exactly the Available times
+                  times: { startUtc; endUtc; status: "Past" | "VehicleBooked" | "Booked" | "Available" }[] }
+AvailabilityDaysDto { dealershipId; serviceTypeId; from; to; timeZoneId; durationMinutes;
+                  days: { date; availableCount; status: "Past" | "FullyBooked" | "Available" }[] }
 BookAppointmentRequest { customerId; vehicleId; dealershipId; serviceTypeId; startTime }
 AppointmentDto  { id; status; startUtc; endUtc; createdUtc; customerId;
                   vehicle { id; make; model; year; vin }; dealership { id; name; timeZoneId };
                   serviceType { id; name; durationMinutes }; technician { id; name };
                   serviceBay { id; name; bayType } }
 ```
+
+**Availability (UX only, reserves nothing; booking stays the final authority).**
+- `times` lists every 15-minute start from opening while the whole job fits before closing. Status, first match wins,
+  in the same order booking checks: `Past` (start <= now) → `VehicleBooked` (only when `vehicleId` is given: the car
+  has a slot in the range, any dealership) → `Booked` (no free technician + bay pair, `DaySchedule.FindPairs`) →
+  `Available`. Both endpoints and the 409 suggestions use the same `DaySchedule.ClassifyStartTimes`, so the screen
+  and booking agree on the same snapshot; every `Available` time books with 201 (integration-tested).
+- `vehicleId` is optional; absent = ignore the car (old response). Present but not a positive integer (including
+  empty) → 400; unknown → 404. No ownership check.
+- Days: `from`/`to` are local dates, inclusive, at most 42 days (one month view). `Past` = before today in the
+  dealership zone; `FullyBooked` = no `Available` time (also today when every remaining time has passed). The whole
+  range needs one query for the technicians' and bays' taken slots and one for the car's slots (plus the catalog
+  lookups); each day is then computed in memory. Days before today load nothing.
+- The web app uses this for a calendar that disables past and fully booked days (still focusable and announced), and a
+  time list that shows taken times disabled with the reason ("Booked", "Your car is booked"); past times are hidden.
 
 Errors are RFC 7807 ProblemDetails: `{ type, title, status, detail, code, traceId, errors?, suggestedStartTimes? }`.
 

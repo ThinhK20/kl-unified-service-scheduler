@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { appointmentDto, availabilityDto } from '../test/fixtures';
-import { bookAppointment, getAvailability } from './appointmentsApi';
+import { appointmentDto, availabilityDaysDto, availabilityDto } from '../test/fixtures';
+import { bookAppointment, getAvailability, getAvailabilityDays, toAvailability } from './appointmentsApi';
 import { ApiError } from './types';
 
 function jsonResponse(status: number, body: unknown, contentType = 'application/json') {
@@ -95,5 +95,53 @@ describe('appointmentsApi + apiClient', () => {
       start: new Date('2030-01-15T03:00:00Z'),
       end: new Date('2030-01-15T04:00:00Z'),
     });
+  });
+
+  it('sends vehicleId when given and keeps the status of every time', async () => {
+    const dto = {
+      ...availabilityDto,
+      times: [
+        { startUtc: '2030-01-15T02:00:00Z', endUtc: '2030-01-15T03:00:00Z', status: 'VehicleBooked' as const },
+        { startUtc: '2030-01-15T03:00:00Z', endUtc: '2030-01-15T04:00:00Z', status: 'Available' as const },
+      ],
+    };
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, dto));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const availability = await getAvailability({ dealershipId: 1, serviceTypeId: 1, date: '2030-01-15', vehicleId: 2 });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://localhost:5080/api/dealerships/1/availability?serviceTypeId=1&date=2030-01-15&vehicleId=2',
+    );
+    expect(availability.times.map((t) => [t.key, t.status])).toEqual([
+      ['2030-01-15T02:00:00.000Z', 'VehicleBooked'],
+      ['2030-01-15T03:00:00.000Z', 'Available'],
+    ]);
+  });
+
+  it('treats an unknown time status as not bookable, and an API without times as only free starts', () => {
+    const odd = toAvailability({
+      ...availabilityDto,
+      times: [{ startUtc: '2030-01-15T03:00:00Z', endUtc: '2030-01-15T04:00:00Z', status: 'Held' as never }],
+    });
+    expect(odd.times[0]?.status).toBe('Booked');
+    const old = toAvailability({ ...availabilityDto, times: undefined });
+    expect(old.times.map((t) => t.status)).toEqual(['Available', 'Available', 'Available']);
+  });
+
+  it('requests the days of a range', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, availabilityDaysDto('2030-01-09', '2030-01-11')));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await getAvailabilityDays({ dealershipId: 1, serviceTypeId: 4, from: '2030-01-09', to: '2030-01-11', vehicleId: null });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://localhost:5080/api/dealerships/1/availability/days?serviceTypeId=4&from=2030-01-09&to=2030-01-11',
+    );
+    expect(result.days).toEqual([
+      { date: '2030-01-09', availableCount: 0, status: 'Past' },
+      { date: '2030-01-10', availableCount: 3, status: 'Available' },
+      { date: '2030-01-11', availableCount: 3, status: 'Available' },
+    ]);
   });
 });

@@ -3,12 +3,14 @@ using Scheduler.Application.Abstractions;
 using Scheduler.Application.Allocation;
 using Scheduler.Application.Appointments.Dtos;
 using Scheduler.Application.Common;
-using Scheduler.Domain.Errors;
 
 namespace Scheduler.Application.Appointments.Queries;
 
-/// <summary>Free start times for a service on a dealership-local date ("YYYY-MM-DD").</summary>
-public sealed record GetAvailabilityQuery(int DealershipId, int ServiceTypeId, string? Date);
+/// <summary>
+/// Start times for a service on a dealership-local date ("YYYY-MM-DD"). <paramref name="VehicleId"/> is the raw
+/// optional query value: null = ignore the car (SPEC section 6).
+/// </summary>
+public sealed record GetAvailabilityQuery(int DealershipId, int ServiceTypeId, string? Date, string? VehicleId = null);
 
 /// <summary>Checks the availability query shape.</summary>
 public sealed class GetAvailabilityValidator : AbstractValidator<GetAvailabilityQuery>
@@ -17,25 +19,22 @@ public sealed class GetAvailabilityValidator : AbstractValidator<GetAvailability
     {
         RuleFor(x => x.DealershipId).GreaterThan(0).WithMessage("dealershipId is required.").OverridePropertyName("dealershipId");
         RuleFor(x => x.ServiceTypeId).GreaterThan(0).WithMessage("serviceTypeId is required.").OverridePropertyName("serviceTypeId");
-        RuleFor(x => x.Date)
-            .Cascade(CascadeMode.Stop)
-            .NotEmpty().WithMessage("date is required.")
-            .Must(value => IsoDateTime.TryParseDate(value, out _)).WithMessage("date must be in the format YYYY-MM-DD.")
-            .Must(value => IsoDateTime.TryParseDate(value, out var date) && SupportedDates.Contains(date))
-            .WithMessage(SupportedDates.Message("date"))
-            .OverridePropertyName("date");
+        RuleFor(x => x.Date).LocalDate("date");
+        RuleFor(x => x.VehicleId).OptionalVehicleId();
     }
 }
 
 /// <summary>
-/// Returns every grid start time on that local day where at least one valid (technician, bay) pair is free for the
-/// full duration and the start is in the future. It reserves nothing.
+/// Returns every candidate grid start time of that local day with its status (SPEC section 6): Past, VehicleBooked
+/// (only when a vehicle is given), Booked, Available. <c>slots</c> are exactly the Available ones. It reserves nothing.
 /// </summary>
 public sealed class GetAvailabilityHandler
 {
     private readonly IValidator<GetAvailabilityQuery> _validator;
     private readonly IDealershipRepository _dealerships;
     private readonly IServiceTypeRepository _serviceTypes;
+    private readonly IVehicleRepository _vehicles;
+    private readonly IAppointmentRepository _appointments;
     private readonly AvailabilityService _availability;
     private readonly IClock _clock;
 
@@ -43,12 +42,16 @@ public sealed class GetAvailabilityHandler
         IValidator<GetAvailabilityQuery> validator,
         IDealershipRepository dealerships,
         IServiceTypeRepository serviceTypes,
+        IVehicleRepository vehicles,
+        IAppointmentRepository appointments,
         AvailabilityService availability,
         IClock clock)
     {
         _validator = validator;
         _dealerships = dealerships;
         _serviceTypes = serviceTypes;
+        _vehicles = vehicles;
+        _appointments = appointments;
         _availability = availability;
         _clock = clock;
     }
@@ -63,46 +66,35 @@ public sealed class GetAvailabilityHandler
         }
 
         IsoDateTime.TryParseDate(query.Date, out var localDate);
-
-        var dealership = await _dealerships.GetByIdAsync(query.DealershipId, cancellationToken);
-        if (dealership is null)
-        {
-            return Error.NotFound("Dealership", query.DealershipId);
-        }
-
-        var serviceType = await _serviceTypes.GetByIdAsync(query.ServiceTypeId, cancellationToken);
-        if (serviceType is null)
-        {
-            return Error.NotFound("Service type", query.ServiceTypeId);
-        }
+        AvailabilityRequest.TryParseVehicleId(query.VehicleId, out var vehicleId);
 
         // Same rules as booking, so the page never offers a time that booking would reject.
-        if (!dealership.IsActive)
+        var target = await AvailabilityRequest.LoadAsync(
+            _dealerships, _serviceTypes, _vehicles, query.DealershipId, query.ServiceTypeId, vehicleId, cancellationToken);
+        if (target.IsFailure)
         {
-            return Error.FromDomain(DomainErrors.Appointment.DealershipInactive);
+            return target.Error;
         }
 
-        if (!serviceType.IsActive)
-        {
-            return Error.FromDomain(DomainErrors.Appointment.ServiceTypeInactive);
-        }
-
-        if (!serviceType.IsOfferedAt(dealership.Id))
-        {
-            return Error.FromDomain(DomainErrors.Appointment.ServiceNotOfferedAtDealership);
-        }
-
+        var (dealership, serviceType) = target.Value;
         var day = await _availability.LoadDayAsync(dealership, serviceType, localDate, cancellationToken);
-        var slots = day.FreeRanges(_clock.UtcNow)
-            .Select(range => new TimeSlotDto(range.StartUtc, range.EndUtc))
+        var vehicleSlots = vehicleId is { } id
+            ? await _appointments.GetVehicleSlotStartsAsync(id, day.OpeningHoursUtc, cancellationToken)
+            : null;
+
+        var times = day.ClassifyStartTimes(_clock.UtcNow, vehicleSlots);
+        var slots = times
+            .Where(time => time.Status == StartTimeStatus.Available)
+            .Select(time => new TimeSlotDto(time.Range.StartUtc, time.Range.EndUtc))
             .ToList();
 
         return new AvailabilityDto(
             dealership.Id,
             serviceType.Id,
-            localDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture),
+            AvailabilityRequest.Format(localDate),
             dealership.TimeZoneId,
             serviceType.DurationMinutes,
-            slots);
+            slots,
+            times.Select(time => new StartTimeDto(time.Range.StartUtc, time.Range.EndUtc, time.Status)).ToList());
     }
 }

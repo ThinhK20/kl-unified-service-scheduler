@@ -27,6 +27,12 @@ const MAX_SUGGESTIONS = 3;
 const MAX_IDEMPOTENCY_KEY_LENGTH = 100;
 const MIN_YEAR = 2000;
 const MAX_YEAR = 9998;
+const MAX_RANGE_DAYS = 42;
+
+/** Availability contract v2, section 1. First match wins, in this order. */
+export type StartTimeStatus = 'Past' | 'VehicleBooked' | 'Booked' | 'Available';
+/** Availability contract v2, section 2. */
+export type DayStatus = 'Past' | 'FullyBooked' | 'Available';
 
 // ---------------------------------------------------------------------------------------------
 // State
@@ -170,6 +176,28 @@ function isIsoDate(value: string): boolean {
 }
 
 const yearInRange = (year: number) => year >= MIN_YEAR && year <= MAX_YEAR;
+
+/** The FluentValidation messages for a required "YYYY-MM-DD" query value, or null when it is fine. */
+function dateFailure(field: string, value: string): string | null {
+  if (value === '') return `${field} is required.`;
+  if (!isIsoDate(value)) return `${field} must be in the format YYYY-MM-DD.`;
+  if (!yearInRange(Number(value.slice(0, 4)))) return `${field} must be between the years ${MIN_YEAR} and ${MAX_YEAR}.`;
+  return null;
+}
+
+/**
+ * Optional `vehicleId` query value: absent = ignore the car; otherwise a positive 32-bit integer. Like the real API,
+ * a present but empty value ("?vehicleId=") is 400, not "absent".
+ */
+function readVehicleId(query: URLSearchParams, failures: [string, string][]): number | null {
+  const raw = query.get('vehicleId');
+  if (raw === null) return null;
+  if (!/^\d+$/.test(raw) || Number(raw) <= 0 || Number(raw) > 2_147_483_647) {
+    failures.push(['vehicleId', 'vehicleId must be a positive number.']);
+    return null;
+  }
+  return Number(raw);
+}
 
 // ---------------------------------------------------------------------------------------------
 // Errors (same codes, titles and messages as the real API: ApiProblems.cs, Error.cs, DomainErrors.cs)
@@ -361,6 +389,10 @@ export class MockSchedulerBackend {
     this.routes = [
       { pattern: /^\/api\/dealerships$/, methods: { GET: () => this.ok(this.getDealerships()) } },
       { pattern: /^\/api\/dealerships\/(-?\d+)\/availability$/, methods: { GET: (m, q) => this.getAvailability(Number(m[1]), q) } },
+      {
+        pattern: /^\/api\/dealerships\/(-?\d+)\/availability\/days$/,
+        methods: { GET: (m, q) => this.getAvailabilityDays(Number(m[1]), q) },
+      },
       { pattern: /^\/api\/service-types$/, methods: { GET: (_m, q) => this.getServiceTypes(q) } },
       { pattern: /^\/api\/customers\/(-?\d+)\/vehicles$/, methods: { GET: (m) => this.getVehicles(Number(m[1])) } },
       {
@@ -454,23 +486,19 @@ export class MockSchedulerBackend {
     const failures: [string, string][] = [];
     if (dealershipId <= 0) failures.push(['dealershipId', 'dealershipId is required.']);
     if (serviceTypeId <= 0) failures.push(['serviceTypeId', 'serviceTypeId is required.']);
-    if (date === '') failures.push(['date', 'date is required.']);
-    else if (!isIsoDate(date)) failures.push(['date', 'date must be in the format YYYY-MM-DD.']);
-    else if (!yearInRange(Number(date.slice(0, 4)))) {
-      failures.push(['date', `date must be between the years ${MIN_YEAR} and ${MAX_YEAR}.`]);
-    }
+    const dateError = dateFailure('date', date);
+    if (dateError) failures.push(['date', dateError]);
+    const vehicleId = readVehicleId(query, failures);
     if (failures.length > 0) return this.problem(path, validationError(failures));
 
-    const dealership = dealerships.find((d) => d.id === dealershipId);
-    if (!dealership) return this.problem(path, notFound('Dealership', dealershipId));
-    const service = serviceTypes.find((s) => s.id === serviceTypeId);
-    if (!service) return this.problem(path, notFound('Service type', serviceTypeId));
-    const ruleError = this.offerRules(dealership, service);
-    if (ruleError) return this.problem(path, ruleError);
+    const offer = this.availabilityOffer(dealershipId, serviceTypeId, vehicleId);
+    if ('error' in offer) return this.problem(path, offer.error);
+    const { dealership, service } = offer;
 
-    const slots = this.freeRanges(dealership, service, date, this.now()).map((r) => ({
-      startUtc: formatUtc(r.start),
-      endUtc: formatUtc(r.end),
+    const times = this.dayTimes(dealership, service, date, this.now(), vehicleId).map((t) => ({
+      startUtc: formatUtc(t.start),
+      endUtc: formatUtc(t.end),
+      status: t.status,
     }));
     return this.ok({
       dealershipId: dealership.id,
@@ -478,8 +506,79 @@ export class MockSchedulerBackend {
       date,
       timeZoneId: dealership.timeZoneId,
       durationMinutes: service.durationMinutes,
-      slots,
+      slots: times.filter((t) => t.status === 'Available').map(({ startUtc, endUtc }) => ({ startUtc, endUtc })),
+      times,
     });
+  }
+
+  private getAvailabilityDays(dealershipId: number, query: URLSearchParams): MockResponse {
+    const path = `/api/dealerships/${dealershipId}/availability/days`;
+    const rawService = query.get('serviceTypeId');
+    if (rawService !== null && rawService !== '' && !/^-?\d+$/.test(rawService)) {
+      return this.problem(path, this.unreadable('serviceTypeId'));
+    }
+    const serviceTypeId = rawService ? Number(rawService) : 0;
+    const from = query.get('from') ?? '';
+    const to = query.get('to') ?? '';
+
+    const failures: [string, string][] = [];
+    if (dealershipId <= 0) failures.push(['dealershipId', 'dealershipId is required.']);
+    if (serviceTypeId <= 0) failures.push(['serviceTypeId', 'serviceTypeId is required.']);
+    const fromError = dateFailure('from', from);
+    if (fromError) failures.push(['from', fromError]);
+    const toError = dateFailure('to', to);
+    if (toError) failures.push(['to', toError]);
+    if (!fromError && !toError) {
+      if (to < from) failures.push(['to', 'to must be on or after from.']);
+      else if ((Date.parse(to) - Date.parse(from)) / DAY_MS + 1 > MAX_RANGE_DAYS) {
+        failures.push(['to', `The range can be at most ${MAX_RANGE_DAYS} days.`]);
+      }
+    }
+    const vehicleId = readVehicleId(query, failures);
+    if (failures.length > 0) return this.problem(path, validationError(failures));
+
+    const offer = this.availabilityOffer(dealershipId, serviceTypeId, vehicleId);
+    if ('error' in offer) return this.problem(path, offer.error);
+    const { dealership, service } = offer;
+
+    const now = this.now();
+    const today = localDateOf(now, dealership.timeZoneId);
+    const days: { date: string; availableCount: number; status: DayStatus }[] = [];
+    for (let date = from; date <= to; date = addDays(date, 1)) {
+      if (date < today) {
+        days.push({ date, availableCount: 0, status: 'Past' });
+        continue;
+      }
+      const availableCount = this.dayTimes(dealership, service, date, now, vehicleId).filter(
+        (t) => t.status === 'Available',
+      ).length;
+      days.push({ date, availableCount, status: availableCount === 0 ? 'FullyBooked' : 'Available' });
+    }
+    return this.ok({
+      dealershipId: dealership.id,
+      serviceTypeId: service.id,
+      from,
+      to,
+      timeZoneId: dealership.timeZoneId,
+      durationMinutes: service.durationMinutes,
+      days,
+    });
+  }
+
+  /** The 404s and offer rules both availability endpoints share (the vehicle has no ownership check). */
+  private availabilityOffer(
+    dealershipId: number,
+    serviceTypeId: number,
+    vehicleId: number | null,
+  ): { error: AppError } | { dealership: SeedDealership; service: SeedServiceType } {
+    const dealership = dealerships.find((d) => d.id === dealershipId);
+    if (!dealership) return { error: notFound('Dealership', dealershipId) };
+    const service = serviceTypes.find((s) => s.id === serviceTypeId);
+    if (!service) return { error: notFound('Service type', serviceTypeId) };
+    if (vehicleId !== null && !vehicles.some((v) => v.id === vehicleId)) return { error: notFound('Vehicle', vehicleId) };
+    const ruleError = this.offerRules(dealership, service);
+    if (ruleError) return { error: ruleError };
+    return { dealership, service };
   }
 
   private offerRules(dealership: SeedDealership, service: SeedServiceType): AppError | null {
@@ -541,16 +640,43 @@ export class MockSchedulerBackend {
     return orderPairs(service, freeTechnicians, freeBays, counts);
   }
 
-  /** DaySchedule.FreeRanges: grid starts in opening hours, after `afterUtc`, with at least one free pair. */
-  freeRanges(dealership: SeedDealership, service: SeedServiceType, localDate: string, afterUtc: number): Range[] {
+  /** Every 15-minute grid start in opening hours where start + duration <= closing time (the starts FreeRanges walks). */
+  private gridRanges(dealership: SeedDealership, service: SeedServiceType, localDate: string): Range[] {
     const hours = this.openingHours(dealership, localDate);
     const duration = service.durationMinutes * 60_000;
     const result: Range[] = [];
     for (let start = Math.ceil(hours.start / SLOT_MS) * SLOT_MS; start + duration <= hours.end; start += SLOT_MS) {
-      const range = { start, end: start + duration };
-      if (start > afterUtc && this.findPairs(dealership, service, localDate, range).length > 0) result.push(range);
+      result.push({ start, end: start + duration });
     }
     return result;
+  }
+
+  /**
+   * Contract v2 section 1: every grid start with its status, first match wins:
+   * Past (start <= now), VehicleBooked (the car holds a slot in the range, same check as booking),
+   * Booked (no free pair for the whole range, same FindPairs as booking), Available.
+   */
+  dayTimes(
+    dealership: SeedDealership,
+    service: SeedServiceType,
+    localDate: string,
+    nowUtc: number,
+    vehicleId: number | null,
+  ): (Range & { status: StartTimeStatus })[] {
+    return this.gridRanges(dealership, service, localDate).map((range) => {
+      let status: StartTimeStatus = 'Available';
+      if (range.start <= nowUtc) status = 'Past';
+      else if (vehicleId !== null && !this.isFree('vehicleId', vehicleId, range)) status = 'VehicleBooked';
+      else if (this.findPairs(dealership, service, localDate, range).length === 0) status = 'Booked';
+      return { ...range, status };
+    });
+  }
+
+  /** DaySchedule.FreeRanges: grid starts in opening hours, after `afterUtc`, with at least one free pair. */
+  freeRanges(dealership: SeedDealership, service: SeedServiceType, localDate: string, afterUtc: number): Range[] {
+    return this.dayTimes(dealership, service, localDate, afterUtc, null)
+      .filter((t) => t.status === 'Available')
+      .map(({ start, end }) => ({ start, end }));
   }
 
   /** DaySchedule.SuggestStartTimes: nearest free starts (earlier wins a tie), skipping car-busy times, ascending. */

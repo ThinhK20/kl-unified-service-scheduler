@@ -162,3 +162,51 @@ export function isIsoDate(value: string): boolean {
   const date = new Date(Date.UTC(y, m - 1, d));
   return date.getUTCFullYear() === y && date.getUTCMonth() === m - 1 && date.getUTCDate() === d;
 }
+
+// ---------------------------------------------------------------------------------------------
+// Calendar dates ("YYYY-MM-DD"). Pure calendar maths in UTC, so no zone or daylight saving time is involved.
+// ---------------------------------------------------------------------------------------------
+
+function parseIsoDate(isoDate: string): { y: number; m: number; d: number } {
+  const [y, m, d] = isoDate.split('-').map(Number) as [number, number, number];
+  return { y, m, d };
+}
+
+const isoFromUtc = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
+
+/** "2026-11-30" + 1 -> "2026-12-01". */
+export function addDaysToIsoDate(isoDate: string, days: number): string {
+  const { y, m, d } = parseIsoDate(isoDate);
+  return isoFromUtc(Date.UTC(y, m - 1, d + days));
+}
+
+/** First day of the month: "2026-11-10" -> "2026-11-01". */
+export function startOfMonthIso(isoDate: string): string {
+  return `${isoDate.slice(0, 7)}-01`;
+}
+
+/** Last day of the month: "2026-02-10" -> "2026-02-28". */
+export function endOfMonthIso(isoDate: string): string {
+  const { y, m } = parseIsoDate(isoDate);
+  return isoFromUtc(Date.UTC(y, m, 0));
+}
+
+/** First day of the month `months` away: "2026-11-10" + 2 -> "2027-01-01". */
+export function addMonthsIso(isoDate: string, months: number): string {
+  const { y, m } = parseIsoDate(isoDate);
+  return isoFromUtc(Date.UTC(y, m - 1 + months, 1));
+}
+
+/**
+ * A Date at local midnight of the browser for a calendar date. Only for date-picker widgets that work with
+ * browser-local Date objects; never use it as an instant.
+ */
+export function isoDateToCalendarDate(isoDate: string): Date {
+  const { y, m, d } = parseIsoDate(isoDate);
+  return new Date(y, m - 1, d);
+}
+
+/** The calendar date ("YYYY-MM-DD") a date-picker Date stands for (its browser-local parts). */
+export function calendarDateToIsoDate(date: Date): string {
+  return todayInBrowserZone(date);
+}

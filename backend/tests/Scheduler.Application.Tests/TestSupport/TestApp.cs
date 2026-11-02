@@ -46,7 +46,9 @@ public sealed class TestApp
 
     public CancelAppointmentHandler CancelHandler() => new(Appointments, UnitOfWork, Clock);
 
-    public GetAvailabilityHandler AvailabilityHandler() => new(new GetAvailabilityValidator(), Catalog, Catalog, Availability, Clock);
+    public GetAvailabilityHandler AvailabilityHandler() => new(new GetAvailabilityValidator(), Catalog, Catalog, Catalog, Appointments, Availability, Clock);
+
+    public GetAvailabilityDaysHandler AvailabilityDaysHandler() => new(new GetAvailabilityDaysValidator(), Catalog, Catalog, Catalog, Appointments, Availability, Clock);
 
     public GetAppointmentsHandler AppointmentsHandler() => new(Appointments);
 
