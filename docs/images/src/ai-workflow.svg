@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1182" viewBox="0 0 1200 1182" font-family="Inter, 'Segoe UI', Arial, sans-serif">
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="context-stroke"/></marker></defs>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="600.0" y="50" text-anchor="middle" font-size="30" font-weight="800" fill="#16202a">Human-led, contract-first AI workflow</text>
+<text x="600.0" y="80" text-anchor="middle" font-size="16" font-weight="400" fill="#5b6570">How this project was designed and built with AI agents</text>
+<rect x="430.0" y="110" width="340" height="64" rx="32" fill="#fdf1ea" stroke="#c2410c" stroke-width="2"/>
+<text x="600.0" y="138.0" text-anchor="middle" font-size="17" font-weight="700" fill="#16202a">Me (the owner)</text>
+<text x="600.0" y="159.0" text-anchor="middle" font-size="14" fill="#5b6570">goal · product decisions · final approval</text>
+<path d="M600.0 174 L600.0 204" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<rect x="390.0" y="204" width="420" height="64" rx="10" fill="#f4f3ef" stroke="#8a857a" stroke-width="2"/>
+<text x="600.0" y="232.0" text-anchor="middle" font-size="17" font-weight="700" fill="#16202a">1. Brainstorm with Claude (chat)</text>
+<text x="600.0" y="253.0" text-anchor="middle" font-size="14" fill="#5b6570">options and trade-offs → I choose</text>
+<path d="M600.0 268 L600.0 298" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<rect x="390.0" y="298" width="420" height="64" rx="10" fill="#f4f3ef" stroke="#8a857a" stroke-width="2"/>
+<text x="600.0" y="326.0" text-anchor="middle" font-size="17" font-weight="700" fill="#16202a">2. Build plan → docs/SPEC.md</text>
+<text x="600.0" y="347.0" text-anchor="middle" font-size="14" fill="#5b6570">one source of truth, reviewed by me</text>
+<path d="M600.0 362 L600.0 392" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<rect x="390.0" y="392" width="420" height="64" rx="10" fill="#e4ecf7" stroke="#1e4e8c" stroke-width="2"/>
+<text x="600.0" y="420.0" text-anchor="middle" font-size="17" font-weight="700" fill="#16202a">3. Orchestrator (Claude Code)</text>
+<text x="600.0" y="441.0" text-anchor="middle" font-size="14" fill="#5b6570">splits the work · reviews every result</text>
+<path d="M600.0 456 L600.0 486" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<rect x="390.0" y="486" width="420" height="64" rx="10" fill="#f4f3ef" stroke="#8a857a" stroke-width="2"/>
+<text x="600.0" y="514.0" text-anchor="middle" font-size="17" font-weight="700" fill="#16202a">4. Feature contract</text>
+<text x="600.0" y="535.0" text-anchor="middle" font-size="14" fill="#5b6570">endpoints · JSON shapes · statuses · errors</text>
+<path d="M600.0 550 L600.0 578" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M220.0 578 L980.0 578" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M220.0 578 L220.0 602" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<path d="M600.0 578 L600.0 602" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<path d="M980.0 578 L980.0 602" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<rect x="70.0" y="602" width="300" height="60" rx="10" fill="#fff4e8" stroke="#e08a3c" stroke-width="2"/>
+<text x="220.0" y="628.0" text-anchor="middle" font-size="17" font-weight="700" fill="#16202a">Backend agent</text>
+<text x="220.0" y="649.0" text-anchor="middle" font-size="14" fill="#5b6570">API + database</text>
+<rect x="450.0" y="602" width="300" height="60" rx="10" fill="#fff4e8" stroke="#e08a3c" stroke-width="2"/>
+<text x="600.0" y="628.0" text-anchor="middle" font-size="17" font-weight="700" fill="#16202a">Frontend agent</text>
+<text x="600.0" y="649.0" text-anchor="middle" font-size="14" fill="#5b6570">screens + simulated API</text>
+<rect x="830.0" y="602" width="300" height="60" rx="10" fill="#fff4e8" stroke="#e08a3c" stroke-width="2"/>
+<text x="980.0" y="628.0" text-anchor="middle" font-size="17" font-weight="700" fill="#16202a">Database agent</text>
+<text x="980.0" y="649.0" text-anchor="middle" font-size="14" fill="#5b6570">schema · migrations · seed</text>
+<path d="M220.0 662 L220.0 686" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M142.0 686 L298.0 686" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M142.0 686 L142.0 706" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<path d="M298.0 686 L298.0 706" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<path d="M600.0 662 L600.0 686" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M522.0 686 L678.0 686" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M522.0 686 L522.0 706" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<path d="M678.0 686 L678.0 706" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<path d="M980.0 662 L980.0 686" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M902.0 686 L1058.0 686" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M902.0 686 L902.0 706" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<path d="M1058.0 686 L1058.0 706" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<rect x="72.0" y="706" width="140" height="54" rx="10" fill="#eef7ee" stroke="#3f9a5b" stroke-width="2"/>
+<text x="142.0" y="729.0" text-anchor="middle" font-size="15" font-weight="700" fill="#16202a">Build</text>
+<text x="142.0" y="750.0" text-anchor="middle" font-size="14" fill="#5b6570">C# code</text>
+<rect x="228.0" y="706" width="140" height="54" rx="10" fill="#f3eefb" stroke="#7c5cc4" stroke-width="2"/>
+<text x="298.0" y="729.0" text-anchor="middle" font-size="15" font-weight="700" fill="#16202a">Test</text>
+<text x="298.0" y="750.0" text-anchor="middle" font-size="14" fill="#5b6570">real SQL Server</text>
+<rect x="452.0" y="706" width="140" height="54" rx="10" fill="#eef7ee" stroke="#3f9a5b" stroke-width="2"/>
+<text x="522.0" y="729.0" text-anchor="middle" font-size="15" font-weight="700" fill="#16202a">Build</text>
+<text x="522.0" y="750.0" text-anchor="middle" font-size="14" fill="#5b6570">React code</text>
+<rect x="608.0" y="706" width="140" height="54" rx="10" fill="#f3eefb" stroke="#7c5cc4" stroke-width="2"/>
+<text x="678.0" y="729.0" text-anchor="middle" font-size="15" font-weight="700" fill="#16202a">Test</text>
+<text x="678.0" y="750.0" text-anchor="middle" font-size="14" fill="#5b6570">UI + parity tests</text>
+<rect x="832.0" y="706" width="140" height="54" rx="10" fill="#eef7ee" stroke="#3f9a5b" stroke-width="2"/>
+<text x="902.0" y="729.0" text-anchor="middle" font-size="15" font-weight="700" fill="#16202a">Build</text>
+<text x="902.0" y="750.0" text-anchor="middle" font-size="14" fill="#5b6570">EF migrations</text>
+<rect x="988.0" y="706" width="140" height="54" rx="10" fill="#f3eefb" stroke="#7c5cc4" stroke-width="2"/>
+<text x="1058.0" y="729.0" text-anchor="middle" font-size="15" font-weight="700" fill="#16202a">Test</text>
+<text x="1058.0" y="750.0" text-anchor="middle" font-size="14" fill="#5b6570">migration tests</text>
+<path d="M142.0 760 L142.0 776" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M298.0 760 L298.0 776" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M142.0 776 L298.0 776" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M220.0 776 L220.0 788" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M522.0 760 L522.0 776" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M678.0 760 L678.0 776" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M522.0 776 L678.0 776" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M600.0 776 L600.0 788" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M902.0 760 L902.0 776" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M1058.0 760 L1058.0 776" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M902.0 776 L1058.0 776" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M980.0 776 L980.0 788" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M220.0 788 L980.0 788" stroke="#5b6570" stroke-width="2" fill="none"/>
+<path d="M600.0 788 L600.0 814" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<rect x="370.0" y="814" width="460" height="64" rx="10" fill="#e3f1e8" stroke="#1f7a4d" stroke-width="2"/>
+<text x="600.0" y="842.0" text-anchor="middle" font-size="17" font-weight="700" fill="#16202a">5. Orchestrator checks</text>
+<text x="600.0" y="863.0" text-anchor="middle" font-size="14" fill="#5b6570">all tests · real app · clicks through it in a browser</text>
+<path d="M600.0 878 L600.0 908" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<rect x="370.0" y="908" width="460" height="64" rx="10" fill="#e3f1e8" stroke="#1f7a4d" stroke-width="2"/>
+<text x="600.0" y="936.0" text-anchor="middle" font-size="17" font-weight="700" fill="#16202a">6. Independent reviewer agent</text>
+<text x="600.0" y="957.0" text-anchor="middle" font-size="14" fill="#5b6570">did not write the code · ranks problems</text>
+<path d="M600.0 972 L600.0 1002" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<text x="610.0" y="992" text-anchor="start" font-size="14" font-weight="400" fill="#5b6570">clean</text>
+<rect x="390.0" y="1002" width="420" height="64" rx="32" fill="#fdf1ea" stroke="#c2410c" stroke-width="2"/>
+<text x="600.0" y="1030.0" text-anchor="middle" font-size="17" font-weight="700" fill="#16202a">7. My decision</text>
+<text x="600.0" y="1051.0" text-anchor="middle" font-size="14" fill="#5b6570">approve, or choose between options</text>
+<path d="M600.0 1066 L600.0 1096" stroke="#5b6570" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<text x="610.0" y="1086" text-anchor="start" font-size="14" font-weight="400" fill="#5b6570">approved</text>
+<rect x="420.0" y="1096" width="360" height="56" rx="10" fill="#16202a" stroke="#16202a" stroke-width="2"/>
+<text x="600.0" y="1130.0" text-anchor="middle" font-size="17" font-weight="700" fill="#ffffff">Commit · update docs · sync</text>
+<path d="M830.0 940 L1160 940 L1160 424 L818.0 424" stroke="#c2410c" stroke-width="2" fill="none" marker-end="url(#a)"/>
+<text x="1148" y="840" text-anchor="end" font-size="14" font-weight="600" fill="#c2410c">problems found:</text>
+<text x="1148" y="860" text-anchor="end" font-size="14" font-weight="600" fill="#c2410c">fix round</text>
+<path d="M70.0 632 L40 632 L40 1034 L382.0 1034" stroke="#c2410c" stroke-width="2" fill="none" stroke-dasharray="6 5" marker-end="url(#a)"/>
+<text x="50" y="982" text-anchor="start" font-size="14" font-weight="600" fill="#c2410c">unclear? agents ask me,</text>
+<text x="50" y="1002" text-anchor="start" font-size="14" font-weight="600" fill="#c2410c">they never guess</text>
+</svg>

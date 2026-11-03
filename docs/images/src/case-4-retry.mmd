@@ -1,0 +1,14 @@
+sequenceDiagram
+    actor C as Customer
+    participant W as Web app
+    participant A as API
+    participant D as Database
+    C->>W: Click "Book" (the network is slow)
+    W->>A: POST booking, Idempotency-Key = K1
+    A->>D: Save appointment + key K1 (same transaction)
+    D-->>A: Saved
+    A--xW: Response lost on the way
+    W->>A: Retry: POST booking, Idempotency-Key = K1
+    A->>D: Key K1 seen before, same request
+    A-->>W: 201 Created: the SAME appointment
+    Note over A,D: Only one appointment exists.<br/>Same key with a different body: 409 IDEMPOTENCY_CONFLICT

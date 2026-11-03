@@ -29,6 +29,7 @@ data flow, technology choices, observability, GenAI in design). The detailed rul
 7. [Design decisions, trade-offs and assumptions](#7-design-decisions-trade-offs-and-assumptions)
 8. [AI Collaboration Narrative](#8-ai-collaboration-narrative)
 9. [What I would do next](#9-what-i-would-do-next)
+10. [Use cases](#10-use-cases)
 
 ---
 
@@ -530,24 +531,16 @@ backend/
     Scheduler.Domain/          Entities/  ValueObjects/ (TimeRange, SlotGrid)  Enums/  Errors/
     Scheduler.Application/     Abstractions/  Allocation/  Appointments/{Book,Cancel,Queries,Dtos}  Catalog/  Common/
     Scheduler.Infrastructure/  Persistence/ (DbContext, Configurations, Migrations)  Repositories/  Seeding/  Time/
-    Scheduler.Api/             Controllers/  Http/  Middleware/  Swagger/  Program.cs  Dockerfile  Scheduler.Api.http
+    Scheduler.Api/             Controllers/  Http/  Middleware/  Observability/  Swagger/  Program.cs  Dockerfile
   tests/
     Scheduler.Domain.Tests/  Scheduler.Application.Tests/  Scheduler.ArchitectureTests/  Scheduler.IntegrationTests/
 frontend/
-  src/api/ (apiClient, appointmentsApi, types)   src/features/booking/   src/features/appointments/
-  src/components/ (Button, Select, Alert, …)     src/lib/ (date and format helpers)
-docs/  SPEC.md (design and spec)  design/  screenshots/
+  src/api/            API client and types
+  src/features/       booking/  appointments/  customers/
+  src/components/     Button, Select, Calendar, Alert, …
+  src/preview/        browser-only live preview (simulated API + guided demo)
+docs/  SYSTEM_DESIGN.md  SPEC.md  images/  screenshots/  design/
 ```
-
-### SOLID
-
-| Principle | Where |
-|---|---|
-| **S** – one job per class | `BookAppointmentHandler` only runs the use case; `BookAppointmentValidator` checks the request shape; `SlotGrid` does slot math; `SqlErrorClassifier` maps SQL errors; controllers only turn HTTP into commands and `ApiProblems` turns errors into HTTP |
-| **O** – extend without editing | A new allocation rule is a new `IResourceAllocationStrategy`; `BookAppointmentHandler` and `DaySchedule` do not change |
-| **L** – implementations are swappable | Every strategy must return all valid pairs, only reordered (tested in `ScarcityAwareStrategyTests` and `LeastQualifiedFirstStrategyTests`); `FakeClock` / `FixedClock` replace `SystemClock` in tests |
-| **I** – small interfaces | `IAppointmentRepository`, `ITechnicianRepository`, `IServiceBayRepository`, `IDealershipRepository`, `IServiceTypeRepository`, `IVehicleRepository`, `ICustomerRepository`, `IIdempotencyStore`, `IUnitOfWork`, `IClock` |
-| **D** – depend on abstractions | Application defines the interfaces, Infrastructure implements them with EF Core; handlers never see `DbContext`; wiring in `Program.cs` via `AddApplication()` and `AddInfrastructure()` |
 
 ### Design patterns
 
@@ -576,17 +569,19 @@ for this size).
 
 ## 6. What each test proves
 
-| Level | Project | Tests | What it proves |
-|---|---|---|---|
-| Domain unit | `Scheduler.Domain.Tests` | 97 | `TimeRange` overlap (touching = no overlap, inside, crossing, identical); `SlotGrid` grid check, rounding, `Split` (60 min → 4 slots, 90 → 6); `Appointment.Create` rules, snapshots and slot rows for technician, bay and car; `Cancel` only from Confirmed and only before the start; an unknown stored time zone is broken data (not a client error); tier order and `IsQualifiedFor`; shifts and opening hours checked in local time (ending exactly at close is allowed, one minute later is not) |
-| Application unit | `Scheduler.Application.Tests` | 226 | Telemetry: every booking and cancel outcome is reported, one retry then created or `DATABASE_BUSY`; Assignment preview: every technician and bay state, list order, status order, the pick equals what booking chooses right after (oil change 10:00 → Nam, not Lan); Availability statuses and their order (Past → VehicleBooked → Booked → Available), `slots` = Available, days results equal per-day results, range and vehicleId validation; Scarcity-aware technician choice (oil change at 10:00 → Nam, so Lan, the only EV technician, stays free for an EV check; Brake inspection: Minh at 13:00, Nam at 09:00); each ordering rule in isolation; inactive, unqualified, off-shift and wrong-bay resources skipped; next pair tried on SlotTaken; 409 with ≤ 3 nearest suggestions; idempotent replay and conflict, including a replay after the start time passed and a same-key race; car already booked → `VEHICLE_ALREADY_BOOKED` (pre-check and a twin booking that wins during the save); validator rules incl. the technical year bound; opening hours → 422; transient error retried once then 503; cancel paths. Uses hand-written fakes and `FakeClock` |
-| Architecture | `Scheduler.ArchitectureTests` | 6 | Domain depends on nothing else (and only on base-library assemblies); Application never references EF Core, Infrastructure or Api; Infrastructure never references Api; entities have no public setters |
-| Integration – persistence | `Scheduler.IntegrationTests` (Persistence, Repositories) | 26 | On a real SQL Server (Testcontainers): migration and seed data (all migrations on an empty database: 3 customers, 5 vehicles), the unique slot index rejects overlaps (touching jobs are fine), cancel frees slots, SlotTaken / IdempotencyKeyTaken / transient error mapping, rowversion conflict on a double cancel, a 10-way repository race with exactly one success |
-| Integration – API | `Scheduler.IntegrationTests` (Api) | 131 | Full HTTP API with `WebApplicationFactory` on the real database: observability (correlation id made, echoed or replaced and returned in errors; metrics and the booking span carry the right outcome; **logs never contain email, phone, VIN or name**), catalog and customers, assignment preview (**every Assignable preview on a busy day books 201 with exactly that technician and bay**), availability (car-busy times, a fully booked day, days endpoint = day endpoint over 12 days × 4 services × 3 car options, **every Available time books with 201**, Booked → 409 NO_AVAILABILITY, VehicleBooked → 409 VEHICLE_ALREADY_BOOKED), book → 201 + Location, scarcity-aware allocation end-to-end, cancel then rebook, cancel after the start → 409, same car at two dealerships → 409, year 9999 → 400 (not 500), broken time zone data → 500, 400/404/405/415/422 shapes, idempotency, `NO_AVAILABILITY` suggestions, CORS, health, Swagger |
-| **Concurrency** | Api | (in the 131) | **`Twenty_parallel_bookings_of_the_same_slot_give_exactly_one_201_and_nineteen_409`**: 20 different cars, exactly 1 × 201, 19 × 409, 1 appointment row and 12 slot rows. `Ten_parallel_bookings_of_the_same_vehicle_at_different_dealerships_give_one_201_and_nine_409`: 1 × 201, 9 × `VEHICLE_ALREADY_BOOKED`. `Ten_parallel_retries_with_the_same_key_and_body_all_get_the_same_appointment`: all 201 with the same id, 1 row |
-| Frontend | `frontend` (Vitest + React Testing Library) | 123 | "Booking as" switcher (switching shows that customer's cars and appointments, stored choice, blocked storage, locked while saving); "Who will serve you" panel (states, highlight, hidden after a 409, refetch on time or car change); Booking form validation; calendar disables past and fully booked days but keeps them focusable and announced, arrow-key navigation; taken times shown disabled with the reason, past times hidden; changing the car clears a time that is no longer free; free times shown in dealership time; Book disabled while saving; 409 shows suggested times that can be clicked; 503 and network errors show Try again; cancel only on Confirmed and the list refreshes; the API adapter turns ProblemDetails into typed errors; time-zone helpers; the preview's simulated API matches the real rules (parity tests) |
+There are **609 automated tests**, and all of them pass. In short, they check that:
 
-Total: 97 + 226 + 6 + 157 + 123 = **609 tests**.
+| Test group | Tests | What it checks, in plain words |
+|---|---|---|
+| Business rules | 97 | Time ranges and the 15-minute grid work; a technician is only qualified with the right skill; jobs fit inside opening hours and shifts; an appointment can only be cancelled before it starts. |
+| Use cases | 226 | Booking, cancelling and the availability screens follow the rules: the right technician and bay are picked (rare specialists are kept free), errors have the right code, a repeated request does not book twice, and busy-database retries work. |
+| Architecture | 6 | The code layers stay separate: the business rules never talk to the database or the web framework directly. |
+| Database | 26 | On a real SQL Server: the tables and demo data are created correctly, and the database itself refuses overlapping bookings. |
+| Full API | 131 | The whole API on a real SQL Server, from request to response: booking, cancelling, availability, "who will serve you", error messages, correlation ids, and that personal data never appears in logs. |
+| Web app | 123 | The screens work like a customer expects: choosing a day and a time, disabled days and times with the reason, switching customer, "who will serve you", booking errors with suggestions, and cancelling. |
+
+**The most important test:** 20 customers try to book the same time at the same moment. Exactly **1** booking
+succeeds and the other **19** get a clear "no availability" answer. This proves double booking cannot happen.
 
 ---
 
@@ -615,66 +610,32 @@ no login: three demo customers chosen with a "Booking as" switcher. Out of scope
 
 ## 8. AI Collaboration Narrative
 
-<!-- TODO(owner): this is a draft written from what actually happened in the build. Rewrite it in your own words. -->
+<!-- TODO(owner): rewrite in your own words before you submit. -->
 
-### My strategy: I decide, the AI builds, and nothing is accepted without proof
+![Human-led, contract-first AI workflow](docs/images/ai-workflow.png)
 
-I used AI for almost all of the code. My job was to set the direction, make the decisions and check the results.
+I used AI for almost all of the code, but I did not ask one agent to "build everything". I led a step-by-step
+workflow where **I make the decisions, AI agents do the work, and nothing is accepted without proof**.
 
-- **Design first, in chat.** Before any code, I used Claude (chat) to brainstorm. I asked it to explain the problem in
-  simple English, list the ways to stop double booking, and compare them. I chose the slot table with a unique index.
-  Details are in [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) section 6.
-- **One written spec as the source of truth.** I asked for a build plan in simple English that follows SOLID and
-  names the design patterns with reasons. I reviewed and corrected it. It became `docs/SPEC.md`. Code comments point
-  to its sections, so I can check any rule against the spec.
-- **An orchestrator with specialist agents.** I used Claude Code as an orchestrator. It gave tasks to separate agents
-  for the backend, the frontend and the database, and reviewed their work before accepting it. For each new feature
-  it first wrote a short **contract** (endpoints, JSON shapes, status names, error messages). The backend and
-  frontend agents built against the same contract in parallel, so they could not drift apart.
-- **Clear rules for the agents.** "If something is unclear, ask me, don't guess." Agents could not change the booking
-  rules unless I agreed, could not commit, and had to run all tests and report the exact counts.
-- **I made the product decisions.** The AI asked me, and I chose. Examples: no login (later: three demo customers);
-  the system always picks the technician and bay; the build plan wins over the UI mock-up when they differ; block a
-  car from two bookings at the same time; cancel only before the start; full-day greying in the calendar; show
-  who will serve you. I also said no to some ideas: combining row locking with the slot table, and switching to
-  SQLite for an easier demo (it would hide the real concurrency behaviour).
-
-### How I verified and refined the AI's output
-
-- **Tests at every level, against a real database.** Unit tests for the rules, architecture tests for the layers, and
-  integration tests that start a **real SQL Server** in Docker. The most important one sends 20 bookings for the same
-  slot at the same moment and expects exactly 1 success and 19 conflicts.
-- **Tests that check promises, not just code.** For example: "every time the screen shows as free really books with
-  201", and "the technician the screen says will serve you is the one booking picks". These catch any drift between
-  what the UI shows and what the API does.
-- **Independent reviews.** After each feature, a separate AI agent that had **not** written the code reviewed it
-  against the contract and ranked its findings. The builders fixed them, and I checked the fixes.
-- **Running the real app.** Beyond the tests, the orchestrator started the real stack (SQL Server, API, web app) and
-  drove the browser with Playwright: book, get a conflict, switch customer, cancel, at desktop and phone width.
-  It looked at screenshots before calling a screen done.
-
-**Real problems this process caught:**
-- **A wrong rule from the AI itself.** The first version of the "protect scarce technicians" rule was wrong. The
-  agent stopped and flagged it instead of guessing. I chose the correct rule ("protect sole specialists").
-- **A car could be booked twice.** The independent review found that one car could have two appointments at the
-  same time at two dealerships. I decided to treat the car as a reserved resource, like a technician or bay.
-- **A fix that broke another feature.** After the car rule, a safe retry with the same `Idempotency-Key` started to
-  fail with "car already booked". A test caught it, and the fix was to check the key first.
-- **Small drifts.** The browser-only preview treated an empty `vehicleId` differently from the real API; the
-  calendar could open on the wrong month if your computer's time zone was ahead of the dealership. Both were found
-  in review and fixed with tests.
-- **Changes to shared code.** When an agent changed a method that booking also uses, the orchestrator checked the
-  change line by line, and the reviewer proved that booking picks the same candidates as before.
-
-### How I ensured the final quality
-
-- **609 automated tests**, all passing, plus the 20-way concurrency test on a real SQL Server.
-- **Warnings are errors** in the backend build; TypeScript strict mode and ESLint in the frontend.
-- **Architecture tests** stop the layers from mixing (for example, business logic can never use EF Core directly).
-- **Every review finding was fixed or explicitly decided by me.** None were left open.
-- **The documents match the code.** SPEC, the design document and this README were updated with each feature, and
-  the test counts here come from real runs.
-- **What I still check by hand:** the Windows steps (Docker Compose, the PowerShell smoke test, LocalDB).
+1. **Me (the owner).** I set the goal, made every product decision, and gave the final approval.
+2. **Brainstorm with Claude (chat).** Before any code, Claude explained the problem in simple English and listed the
+   ways to stop double booking. I compared them and chose the unique slot table. Details:
+   [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md) section 6.
+3. **Build plan → `docs/SPEC.md`.** I asked for a plan in simple English that follows SOLID and names the design
+   patterns. I reviewed and corrected it. It became the one source of truth for all agents.
+4. **Orchestrator (Claude Code).** It split the work and gave tasks to specialist agents, then reviewed every result.
+5. **Feature contract.** For each feature, the orchestrator first wrote a short contract: endpoints, JSON shapes,
+   status names and error messages. All agents built against the same contract, so the backend and the frontend
+   always matched.
+6. **Specialist agents build and test.** The backend agent, the frontend agent and (in the early phases) the database
+   agent each wrote code **and** its tests. The backend tests run on a real SQL Server.
+7. **Orchestrator checks.** It ran all the tests, started the real app, and clicked through it in a browser at
+   desktop and phone width before calling a step done.
+8. **Independent reviewer agent.** A separate agent that had **not** written the code reviewed it against the
+   contract and ranked the problems. Every problem went back for a fix round, then was checked again.
+9. **My decision.** When something was unclear, the agents asked me instead of guessing. I approved each step or
+   chose between options, for example: block a car from two bookings at the same time, allow cancel only before the
+   start, and keep SQL Server instead of SQLite. Then the work was committed and the docs were updated.
 
 ---
 
@@ -687,3 +648,50 @@ I used AI for almost all of the code. My job was to set the direction, make the 
 - **Holidays, leave and special opening hours** for dealerships and technicians.
 - **Jobs that need more than one technician** or more than one bay.
 - **Observability in production**: dashboards and alerts on the metrics we already export (409 rate, `DATABASE_BUSY`, p95 booking time), and browser error reporting.
+
+---
+
+## 10. Use cases
+
+Each picture shows the **actors** (who takes part) and the **actions** in order.
+
+### Use case 1: Book a service
+
+**Actors:** customer, web app, API, database.
+The customer picks a car, a dealership, a service, a day and a time. Before booking, the app shows who will serve
+them. The API saves the appointment and its time slots in one transaction.
+
+![Use case 1: book a service](docs/images/case-1-book.png)
+
+### Use case 2: Two customers want the same time
+
+**Actors:** customer A, customer B, API, database.
+Both click "Book" for 11:00 at the same moment. The database accepts the first booking and refuses the second. The API
+then offers customer B the three nearest free times, and B books one of them.
+
+![Use case 2: two customers want the same time](docs/images/case-2-race.png)
+
+### Use case 3: The car is already booked
+
+**Actors:** customer, web app, API.
+A car cannot be in two places at once. If the car already has a booking at 10:00, the app shows 10:00 as "Your car is
+booked". With another car, the same time can show "Booked" because the technician is busy.
+
+![Use case 3: the car is already booked](docs/images/case-3-car.png)
+
+### Use case 4: Double click or network retry
+
+**Actors:** customer, web app, API, database.
+Every booking request carries an `Idempotency-Key`. If the same request arrives twice, the API returns the first
+result instead of booking twice.
+
+![Use case 4: double click or network retry](docs/images/case-4-retry.png)
+
+### Use case 5: Cancel an appointment
+
+**Actors:** customer, web app, API, database.
+The customer confirms the cancel. The API checks the appointment has not started, marks it Cancelled and frees the
+technician, the bay and the car at once.
+
+![Use case 5: cancel an appointment](docs/images/case-5-cancel.png)
+

@@ -1,0 +1,14 @@
+sequenceDiagram
+    actor C as Customer
+    participant W as Web app
+    participant A as API
+    participant D as Database
+    C->>W: Open "My appointments", click "Cancel"
+    W-->>C: "Cancel this appointment?" Yes / Keep it
+    C->>W: Yes, cancel
+    W->>A: POST cancel
+    A->>A: Is it Confirmed and not started yet?
+    A->>D: Status = Cancelled, delete its slot rows (one transaction)
+    A-->>W: 200 OK, status Cancelled
+    W-->>C: Shows "Cancelled"
+    Note over A,D: The technician, bay and car are free again at once

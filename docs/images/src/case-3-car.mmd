@@ -1,0 +1,13 @@
+sequenceDiagram
+    actor C as Customer (An)
+    participant W as Web app
+    participant A as API
+    Note over C,A: The Toyota already has a booking at 10:00–11:00
+    C->>W: Start another booking for the same Toyota
+    W->>A: Times for this day, for this car
+    A-->>W: 10:00 = "Your car is booked"
+    W-->>C: 10:00 is disabled with the reason
+    C->>W: Switch to the Honda
+    W->>A: Times for this day, for the Honda
+    A-->>W: 10:00 = "Booked" (Lan is busy)
+    Note over A: If a request still sends the busy car,<br/>the API answers 409 VEHICLE_ALREADY_BOOKED

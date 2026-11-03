@@ -1,0 +1,17 @@
+sequenceDiagram
+    actor A1 as Customer A
+    actor B1 as Customer B
+    participant A as API
+    participant D as Database
+    Note over A1,B1: Both see 11:00 as free<br/>and click "Book" at the same moment
+    A1->>A: Book 11:00
+    B1->>A: Book 11:00
+    A->>D: Save A's slot rows
+    D-->>A: Saved
+    A-->>A1: 201 Created
+    A->>D: Save B's slot rows
+    D-->>A: Rejected: slot already taken (unique index)
+    A->>A: Try the next technician + bay pair, none left
+    A-->>B1: 409 NO_AVAILABILITY + 3 nearest free times
+    B1->>A: Book a suggested time
+    A-->>B1: 201 Created
