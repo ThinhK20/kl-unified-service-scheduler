@@ -30,6 +30,9 @@ export function AppHeader() {
           <NavLink to="/appointments" className={navClass}>
             My appointments
           </NavLink>
+          <NavLink to="/setup" className={navClass}>
+            Dealership setup
+          </NavLink>
         </nav>
         <CustomerSwitcher />
       </div>

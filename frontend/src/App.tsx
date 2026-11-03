@@ -3,6 +3,7 @@ import { AppHeader } from './components/AppHeader';
 import { AppointmentsPage } from './features/appointments/AppointmentsPage';
 import { BookingPage } from './features/booking/BookingPage';
 import { CustomerProvider } from './features/customers/CustomerProvider';
+import { SetupPage } from './features/setup/SetupPage';
 
 export function App() {
   return (
@@ -15,6 +16,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<BookingPage />} />
           <Route path="/appointments" element={<AppointmentsPage />} />
+          <Route path="/setup" element={<SetupPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>

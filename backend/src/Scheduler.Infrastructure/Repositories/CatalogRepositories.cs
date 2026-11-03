@@ -29,6 +29,12 @@ internal sealed class ServiceTypeRepository(SchedulerDbContext db) : IServiceTyp
 
         return await DbCall.RunAsync(() => query.OrderBy(s => s.Id).ToListAsync(cancellationToken));
     }
+
+    public async Task<IReadOnlyList<ServiceType>> GetByDealershipAsync(int dealershipId, CancellationToken cancellationToken) =>
+        await DbCall.RunAsync(() => db.ServiceTypes.AsNoTracking()
+            .Where(s => s.DealershipId == dealershipId)
+            .OrderBy(s => s.Id)
+            .ToListAsync(cancellationToken));
 }
 
 internal sealed class VehicleRepository(SchedulerDbContext db) : IVehicleRepository

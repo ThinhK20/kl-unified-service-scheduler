@@ -420,6 +420,7 @@ have an offset (a value without one is rejected, never read as server local time
 | GET | `/api/dealerships` | Active dealerships with local opening hours | 200 |
 | GET | `/api/service-types?dealershipId={id}` | Active service types (filter is optional) | 200, 400 |
 | GET | `/api/customers` | The demo customers (for the "Booking as" switcher) | 200 |
+| GET | `/api/dealerships/{id}/setup` | The dealership's opening hours, services, technicians (skills, shifts) and bays, inactive ones too, plus who can do each service. Read-only, for the "Dealership setup" tab | 200, 404 |
 | GET | `/api/customers/{id}/vehicles` | A customer's vehicles | 200, 404 |
 | GET | `/api/dealerships/{id}/availability?serviceTypeId=&date=YYYY-MM-DD[&vehicleId=]` | Every start time on that local day with a status (`Available`, `Booked`, `VehicleBooked`, `Past`); `slots` = the Available ones. Optional `vehicleId` makes it car-aware. Reserves nothing | 200, 400, 404, 422 |
 | GET | `/api/dealerships/{id}/availability/days?serviceTypeId=&from=&to=[&vehicleId=]` | Per-day status for a calendar (`Available`, `FullyBooked`, `Past`) and the count of Available times; at most 42 days | 200, 400, 404, 422 |
@@ -569,16 +570,16 @@ for this size).
 
 ## 6. What each test proves
 
-There are **609 automated tests**, and all of them pass. In short, they check that:
+There are **629 automated tests**, and all of them pass. In short, they check that:
 
 | Test group | Tests | What it checks, in plain words |
 |---|---|---|
 | Business rules | 97 | Time ranges and the 15-minute grid work; a technician is only qualified with the right skill; jobs fit inside opening hours and shifts; an appointment can only be cancelled before it starts. |
-| Use cases | 226 | Booking, cancelling and the availability screens follow the rules: the right technician and bay are picked (rare specialists are kept free), errors have the right code, a repeated request does not book twice, and busy-database retries work. |
+| Use cases | 232 | Booking, cancelling and the availability screens follow the rules: the right technician and bay are picked (rare specialists are kept free), errors have the right code, a repeated request does not book twice, and busy-database retries work. |
 | Architecture | 6 | The code layers stay separate: the business rules never talk to the database or the web framework directly. |
 | Database | 26 | On a real SQL Server: the tables and demo data are created correctly, and the database itself refuses overlapping bookings. |
-| Full API | 131 | The whole API on a real SQL Server, from request to response: booking, cancelling, availability, "who will serve you", error messages, correlation ids, and that personal data never appears in logs. |
-| Web app | 123 | The screens work like a customer expects: choosing a day and a time, disabled days and times with the reason, switching customer, "who will serve you", booking errors with suggestions, and cancelling. |
+| Full API | 135 | The whole API on a real SQL Server, from request to response: booking, cancelling, availability, "who will serve you", error messages, correlation ids, and that personal data never appears in logs. |
+| Web app | 133 | The screens work like a customer expects: choosing a day and a time, disabled days and times with the reason, switching customer, "who will serve you", booking errors with suggestions, cancelling, and the "Dealership setup" tab. |
 
 **The most important test:** 20 customers try to book the same time at the same moment. Exactly **1** booking
 succeeds and the other **19** get a clear "no availability" answer. This proves double booking cannot happen.

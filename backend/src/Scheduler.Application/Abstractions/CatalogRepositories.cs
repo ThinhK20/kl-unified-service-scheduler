@@ -18,6 +18,9 @@ public interface IServiceTypeRepository
 
     /// <summary>Active service types, ordered by Id; only those of <paramref name="dealershipId"/> when it is given.</summary>
     Task<IReadOnlyList<ServiceType>> GetActiveAsync(int? dealershipId, CancellationToken cancellationToken);
+
+    /// <summary>All service types of the dealership (active AND inactive), ordered by Id.</summary>
+    Task<IReadOnlyList<ServiceType>> GetByDealershipAsync(int dealershipId, CancellationToken cancellationToken);
 }
 
 /// <summary>Reads vehicles. Read only.</summary>

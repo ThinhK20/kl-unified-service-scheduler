@@ -1,7 +1,9 @@
 // Seed data for the in-browser preview API. Same rows and ids as the real database seed
 // (SPEC section 4, backend/src/Scheduler.Infrastructure/Seeding/SeedData.cs).
 
-export type Skill = 'General' | 'Brakes' | 'Tyres' | 'EV' | 'Diagnostics';
+/** In the backend's Skill enum order (the setup endpoint lists skills in this order). */
+export const SKILLS = ['General', 'Brakes', 'Tyres', 'EV', 'Diagnostics'] as const;
+export type Skill = (typeof SKILLS)[number];
 export type BayType = 'Standard' | 'Lift' | 'EV';
 export type Status = 'Confirmed' | 'Cancelled' | 'Completed';
 

@@ -57,6 +57,9 @@ public sealed class TestApp
 
     public GetCustomersHandler CustomersHandler() => new(Catalog);
 
+    public GetDealershipSetupHandler DealershipSetupHandler() =>
+        new(Catalog, Catalog, new FakeTechnicianRepository(Data), new FakeServiceBayRepository(Data));
+
     public GetAppointmentsHandler AppointmentsHandler() => new(Appointments);
 
     public GetAppointmentByIdHandler AppointmentByIdHandler() => new(Appointments);

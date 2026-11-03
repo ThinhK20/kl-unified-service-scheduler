@@ -19,6 +19,8 @@ import type {
   DayAvailabilityDto,
   DayStatus,
   Dealership,
+  DealershipSetup,
+  DealershipSetupDto,
   DealershipDto,
   ServiceType,
   ServiceTypeDto,
@@ -132,6 +134,11 @@ export function toAppointment(dto: AppointmentDto): Appointment {
 
 export async function getDealerships(signal?: AbortSignal): Promise<Dealership[]> {
   return apiRequest<DealershipDto[]>('/api/dealerships', { signal });
+}
+
+/** Everything the booking rules work with at one dealership (read-only). */
+export async function getDealershipSetup(dealershipId: number, signal?: AbortSignal): Promise<DealershipSetup> {
+  return apiRequest<DealershipSetupDto>(`/api/dealerships/${dealershipId}/setup`, { signal });
 }
 
 export async function getServiceTypes(dealershipId: number, signal?: AbortSignal): Promise<ServiceType[]> {

@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<GetServiceTypesHandler>();
         services.AddScoped<GetCustomerVehiclesHandler>();
         services.AddScoped<GetCustomersHandler>();
+        services.AddScoped<GetDealershipSetupHandler>();
 
         return services;
     }

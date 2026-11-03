@@ -77,7 +77,7 @@ Everything runs with one command: `docker compose up --build`. There are three c
 
 | Component | Its job |
 |---|---|
-| **React web app** | The customer journey: pick who is booking, the car, the dealership, the service, a day in the calendar and a free time, then book. It shows who is expected to serve you, the booking result, and a list of your appointments with Cancel. It never decides anything important; the API does. |
+| **React web app** | The customer journey: pick who is booking, the car, the dealership, the service, a day in the calendar and a free time, then book. It shows who is expected to serve you, the booking result, and a list of your appointments with Cancel. It never decides anything important; the API does. A "Dealership setup" tab shows the technicians, bays and services the system books with. |
 | **nginx (web container)** | Serves the built React files. Nothing else. |
 | **Api layer** | The HTTP edge. Controllers turn requests into use-case calls and results into HTTP responses. Every error becomes the same JSON shape (ProblemDetails) with a stable `code`. It also adds the correlation id, health checks and Swagger. |
 | **Application layer** | The use cases: *book*, *cancel*, *list appointments*, *availability*, *days for the calendar*, *assignment preview*. It validates input, runs the business steps and chooses the technician and bay with the **allocation strategy**. It only talks to the database through interfaces. |
@@ -295,7 +295,7 @@ keeps no state in memory between requests, so we can run more instances behind a
 - For very busy dealerships, a "hold this slot for 5 minutes" step could reduce 409s.
 
 **Maintainability.** Clean Architecture keeps the rules in the Domain and Application layers, which have no database
-code. Architecture tests stop layers from mixing. Each use case is one handler. There are 609 automated tests.
+code. Architecture tests stop layers from mixing. Each use case is one handler. There are 629 automated tests.
 
 ---
 

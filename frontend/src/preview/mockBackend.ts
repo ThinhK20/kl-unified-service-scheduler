@@ -11,6 +11,7 @@ import {
   exampleAppointments,
   serviceTypes,
   technicians,
+  SKILLS,
   TIERS,
   vehicles,
   ZONE_OFFSET_MINUTES,
@@ -459,6 +460,7 @@ export class MockSchedulerBackend {
         pattern: /^\/api\/dealerships\/(-?\d+)\/assignment-preview$/,
         methods: { GET: (m, q) => this.getAssignmentPreview(Number(m[1]), q) },
       },
+      { pattern: /^\/api\/dealerships\/(-?\d+)\/setup$/, methods: { GET: (m) => this.getDealershipSetup(Number(m[1])) } },
       { pattern: /^\/api\/customers$/, methods: { GET: () => this.ok(this.getCustomers()) } },
       { pattern: /^\/api\/service-types$/, methods: { GET: (_m, q) => this.getServiceTypes(q) } },
       { pattern: /^\/api\/customers\/(-?\d+)\/vehicles$/, methods: { GET: (m) => this.getVehicles(Number(m[1])) } },
@@ -531,6 +533,60 @@ export class MockSchedulerBackend {
           requiredBayType,
         })),
     );
+  }
+
+  // --- dealership setup (setup contract, section 1) ------------------------------------------
+
+  private getDealershipSetup(dealershipId: number): MockResponse {
+    const path = `/api/dealerships/${dealershipId}/setup`;
+    // An inactive dealership is still shown: this is information, not booking.
+    const dealership = dealerships.find((d) => d.id === dealershipId);
+    if (!dealership) return this.problem(path, notFound('Dealership', dealershipId));
+    const byActiveThenName = <T extends { isActive: boolean; name: string; id: number }>(a: T, b: T) =>
+      Number(b.isActive) - Number(a.isActive) || compareOrdinalIgnoreCase(a.name, b.name) || a.id - b.id;
+    const ownTechnicians = technicians.filter((t) => t.dealershipId === dealership.id);
+    const ownBays = bays.filter((b) => b.dealershipId === dealership.id);
+    return this.ok({
+      dealership: {
+        id: dealership.id,
+        name: dealership.name,
+        timeZoneId: dealership.timeZoneId,
+        openTime: dealership.openTime,
+        closeTime: dealership.closeTime,
+        isActive: dealership.isActive,
+      },
+      serviceTypes: serviceTypes
+        .filter((s) => s.dealershipId === dealership.id)
+        .sort((a, b) => a.id - b.id)
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          durationMinutes: s.durationMinutes,
+          requiredSkill: s.requiredSkill,
+          minimumTier: s.minimumTier,
+          requiredBayType: s.requiredBayType,
+          isActive: s.isActive,
+          qualifiedTechnicianIds: ownTechnicians
+            .filter((t) => t.isActive && isQualified(t, s))
+            .map((t) => t.id)
+            .sort((a, b) => a - b),
+          matchingBayIds: ownBays
+            .filter((b) => b.isActive && b.bayType === s.requiredBayType)
+            .map((b) => b.id)
+            .sort((a, b) => a - b),
+        })),
+      technicians: [...ownTechnicians].sort(byActiveThenName).map((t) => ({
+        id: t.id,
+        name: t.name,
+        shiftStart: t.shiftStart,
+        shiftEnd: t.shiftEnd,
+        isActive: t.isActive,
+        skills: SKILLS.filter((skill) => t.skills[skill] !== undefined).map((skill) => ({ skill, tier: t.skills[skill]! })),
+      })),
+      serviceBays: [...ownBays]
+        .sort(byActiveThenName)
+        .map((b) => ({ id: b.id, name: b.name, bayType: b.bayType, isActive: b.isActive })),
+    });
   }
 
   private getCustomers() {

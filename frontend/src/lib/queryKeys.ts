@@ -8,6 +8,7 @@ export const mutationKeys = {
 export const queryKeys = {
   customers: ['customers'] as const,
   dealerships: ['dealerships'] as const,
+  dealershipSetup: (dealershipId: number) => ['dealership-setup', dealershipId] as const,
   serviceTypes: (dealershipId: number) => ['service-types', dealershipId] as const,
   vehicles: (customerId: number) => ['vehicles', customerId] as const,
   availabilityAll: ['availability'] as const,

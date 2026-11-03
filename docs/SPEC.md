@@ -192,6 +192,7 @@ needs an offset (for example `"2026-11-10T10:30:00+07:00"`).
 | GET | /api/dealerships | 200 |
 | GET | /api/service-types?dealershipId= | 200, 400 |
 | GET | /api/customers | 200 |
+| GET | /api/dealerships/{id}/setup | 200, 404 |
 | GET | /api/customers/{id}/vehicles | 200, 404 |
 | GET | /api/dealerships/{id}/availability?serviceTypeId=&date=YYYY-MM-DD[&vehicleId=] | 200, 400, 404, 422 |
 | GET | /api/dealerships/{id}/availability/days?serviceTypeId=&from=&to=[&vehicleId=] | 200, 400, 404, 422 |
@@ -206,6 +207,11 @@ needs an offset (for example `"2026-11-10T10:30:00+07:00"`).
 DealershipDto   { id; name; timeZoneId; openTime: "HH:mm"; closeTime: "HH:mm" }
 ServiceTypeDto  { id; dealershipId; name; durationMinutes; requiredSkill; minimumTier; requiredBayType }
 CustomerDto     { id; name; email; phone }
+DealershipSetupDto { dealership { id; name; timeZoneId; openTime; closeTime; isActive };
+                  serviceTypes: { id; name; durationMinutes; requiredSkill; minimumTier; requiredBayType; isActive;
+                                  qualifiedTechnicianIds; matchingBayIds }[];   // active resources only, same rules as booking
+                  technicians: { id; name; shiftStart; shiftEnd; isActive; skills: { skill; tier }[] }[];  // active first, then name
+                  serviceBays: { id; name; bayType; isActive }[] }
 VehicleDto      { id; customerId; vin; make; model; year }
 AvailabilityDto { dealershipId; serviceTypeId; date; timeZoneId; durationMinutes;
                   slots: { startUtc; endUtc }[];                                  // exactly the Available times

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compareOrdinalIgnoreCase, createSeedState, MockSchedulerBackend, parseWithOffset, type MockState } from './mockBackend';
-import { bays, technicians } from './seed';
+import { bays, dealerships, serviceTypes, technicians } from './seed';
 
 const DAY = '2030-01-15';
 /** Local Ho Chi Minh City time on DAY -> request startTime with offset. */
@@ -441,6 +441,73 @@ describe('assignment preview (customers contract section 3)', () => {
     expect(compareOrdinalIgnoreCase('_a', 'a')).toBeGreaterThan(0);
     // Length-preserving: "ß" is not expanded to "SS".
     expect(compareOrdinalIgnoreCase('straße', 'STRASSE')).not.toBe(0);
+  });
+});
+
+describe('dealership setup (setup contract section 1)', () => {
+  type Setup = {
+    dealership: Record<string, unknown>;
+    serviceTypes: { id: number; name: string; isActive: boolean; qualifiedTechnicianIds: number[]; matchingBayIds: number[] }[];
+    technicians: { id: number; name: string; isActive: boolean; shiftStart: string; skills: { skill: string; tier: string }[] }[];
+    serviceBays: { id: number; name: string; bayType: string; isActive: boolean }[];
+  };
+  const setupOf = (id: number) => setup().call('GET', `/api/dealerships/${id}/setup`);
+
+  it('lists every service, technician and bay of the dealership with the booking rules applied', () => {
+    const response = setupOf(1);
+    expect(response.status).toBe(200);
+    const body = response.body as unknown as Setup;
+    expect(body.dealership).toEqual({
+      id: 1, name: 'District 1 Service Centre', timeZoneId: 'Asia/Ho_Chi_Minh', openTime: '08:00', closeTime: '17:00', isActive: true,
+    });
+    expect(body.serviceTypes.map((s) => [s.name, s.qualifiedTechnicianIds, s.matchingBayIds])).toEqual([
+      ['Oil change', [1, 2, 3], [1]],
+      ['Brake inspection', [1, 3], [2]], // Bay 4 (Lift) is inactive; Tuan (Master brakes) is inactive
+      ['Tyre rotation', [1, 2], [2]],
+      ['EV battery check', [2], [3]], // Lan is the only active EV technician
+    ]);
+    expect(body.serviceTypes[3]).toMatchObject({
+      id: 4, durationMinutes: 60, requiredSkill: 'EV', minimumTier: 'Senior', requiredBayType: 'EV', isActive: true,
+    });
+    // Active first, then name; inactive Tuan last.
+    expect(body.technicians.map((t) => [t.name, t.isActive])).toEqual([
+      ['Lan', true], ['Minh', true], ['Nam', true], ['Tuan', false],
+    ]);
+    expect(body.technicians[0]).toEqual({
+      id: 2, name: 'Lan', shiftStart: '08:00', shiftEnd: '17:00', isActive: true,
+      skills: [{ skill: 'General', tier: 'Qualified' }, { skill: 'Tyres', tier: 'Qualified' }, { skill: 'EV', tier: 'Senior' }],
+    });
+    // Skills in enum order (General, Brakes, Tyres, EV, Diagnostics), not seed order.
+    expect(body.technicians[3]!.skills.map((s) => s.skill)).toEqual(['General', 'Brakes', 'EV']);
+    expect(body.serviceBays.map((b) => [b.name, b.bayType, b.isActive])).toEqual([
+      ['Bay 1', 'Standard', true], ['Bay 2', 'Lift', true], ['Bay 3', 'EV', true], ['Bay 4', 'Lift', false],
+    ]);
+  });
+
+  it('shows only the dealership\'s own rows, inactive services too, and still answers for an inactive dealership', () => {
+    const thuDuc = setupOf(2).body as unknown as Setup;
+    expect(thuDuc.serviceTypes.map((s) => [s.id, s.qualifiedTechnicianIds, s.matchingBayIds])).toEqual([[5, [4], [4]]]);
+    expect(thuDuc.technicians.map((t) => t.name)).toEqual(['Hoa']);
+    expect(thuDuc.serviceBays.map((b) => b.name)).toEqual(['Bay A']);
+
+    const service = serviceTypes.find((s) => s.id === 3)!;
+    const dealership = dealerships.find((d) => d.id === 1)!;
+    service.isActive = false;
+    dealership.isActive = false;
+    try {
+      const body = setupOf(1);
+      expect(body.status).toBe(200);
+      expect((body.body as unknown as Setup).dealership.isActive).toBe(false);
+      expect((body.body as unknown as Setup).serviceTypes.find((s) => s.id === 3)).toMatchObject({ isActive: false, qualifiedTechnicianIds: [1, 2] });
+    } finally {
+      service.isActive = true;
+      dealership.isActive = true;
+    }
+  });
+
+  it('404 for an unknown dealership', () => {
+    expect(setupOf(9).body).toMatchObject({ status: 404, code: 'NOT_FOUND', detail: 'Dealership 9 was not found.' });
+    expect(setup().call('POST', '/api/dealerships/1/setup').status).toBe(405);
   });
 });
 

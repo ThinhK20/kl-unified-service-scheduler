@@ -238,6 +238,9 @@ public sealed class FakeCatalog : IDealershipRepository, IServiceTypeRepository,
             .Where(s => s.IsActive && (dealershipId is null || s.DealershipId == dealershipId))
             .ToList());
 
+    public Task<IReadOnlyList<ServiceType>> GetByDealershipAsync(int dealershipId, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<ServiceType>>(_data.ServiceTypes.Where(s => s.DealershipId == dealershipId).OrderBy(s => s.Id).ToList());
+
     Task<Vehicle?> IVehicleRepository.GetByIdAsync(int vehicleId, CancellationToken cancellationToken) =>
         Task.FromResult(_data.Vehicles.SingleOrDefault(v => v.Id == vehicleId));
 

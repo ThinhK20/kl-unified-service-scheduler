@@ -101,6 +101,27 @@ export interface AssignmentPreviewDto {
   serviceBays: { id: number; name: string; bayType: string; state: BayState }[];
 }
 
+/** Read-only setup of one dealership (setup contract, section 1). */
+export interface DealershipSetupDto {
+  dealership: DealershipDto & { isActive: boolean };
+  serviceTypes: (Omit<ServiceTypeDto, 'dealershipId'> & {
+    isActive: boolean;
+    /** Active technicians qualified for it, ascending id. */
+    qualifiedTechnicianIds: number[];
+    /** Active bays of the right type, ascending id. */
+    matchingBayIds: number[];
+  })[];
+  technicians: {
+    id: number;
+    name: string;
+    shiftStart: HhMm;
+    shiftEnd: HhMm;
+    isActive: boolean;
+    skills: { skill: string; tier: string }[];
+  }[];
+  serviceBays: { id: number; name: string; bayType: string; isActive: boolean }[];
+}
+
 export interface BookAppointmentRequest {
   customerId: number;
   vehicleId: number;
@@ -238,6 +259,7 @@ function isStringArrayRecord(value: unknown): value is Record<string, string[]> 
 // ---------------------------------------------------------------------------
 
 export type Customer = CustomerDto;
+export type DealershipSetup = DealershipSetupDto;
 export type Dealership = DealershipDto;
 export type ServiceType = ServiceTypeDto;
 

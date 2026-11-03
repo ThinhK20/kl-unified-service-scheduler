@@ -20,6 +20,26 @@ public sealed class DealershipsController : ControllerBase
         Ok(await handler.HandleAsync(cancellationToken));
 
     /// <summary>
+    /// How a dealership is set up (SPEC section 6): hours, all service types, technicians and bays (inactive ones too),
+    /// and for each service the active technicians qualified for it and the active bays of the right type. Read only.
+    /// </summary>
+    /// <param name="id">Dealership id. An inactive dealership is still returned.</param>
+    /// <param name="handler">Use case handler (injected).</param>
+    /// <param name="cancellationToken">Request cancellation.</param>
+    /// <response code="200">
+    /// The setup. Service types by id; technicians and bays active first, then by name. Times are local "HH:mm".
+    /// </response>
+    /// <response code="404">Unknown dealership.</response>
+    [HttpGet("{id:int}/setup")]
+    [ProducesResponseType<DealershipSetupDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, ApiProblems.ContentType)]
+    public async Task<IActionResult> GetSetup(int id, [FromServices] GetDealershipSetupHandler handler, CancellationToken cancellationToken)
+    {
+        var result = await handler.HandleAsync(new GetDealershipSetupQuery(id), cancellationToken);
+        return this.ToActionResult(result, dto => Ok(dto));
+    }
+
+    /// <summary>
     /// Start times for a service on one dealership-local date, each with a status (SPEC section 6). Nothing is reserved;
     /// the booking endpoint stays the final authority.
     /// </summary>
