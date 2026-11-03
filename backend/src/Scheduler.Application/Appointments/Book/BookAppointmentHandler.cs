@@ -29,6 +29,7 @@ public sealed class BookAppointmentHandler
     private readonly IIdempotencyStore _idempotency;
     private readonly AvailabilityService _availability;
     private readonly IClock _clock;
+    private readonly IAppointmentTelemetry _telemetry;
 
     public BookAppointmentHandler(
         IValidator<BookAppointmentCommand> validator,
@@ -39,7 +40,8 @@ public sealed class BookAppointmentHandler
         IAppointmentRepository appointments,
         IIdempotencyStore idempotency,
         AvailabilityService availability,
-        IClock clock)
+        IClock clock,
+        IAppointmentTelemetry telemetry)
     {
         _validator = validator;
         _customers = customers;
@@ -50,12 +52,23 @@ public sealed class BookAppointmentHandler
         _idempotency = idempotency;
         _availability = availability;
         _clock = clock;
+        _telemetry = telemetry;
     }
 
     public async Task<Result<BookAppointmentResult>> HandleAsync(BookAppointmentCommand command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
 
+        // SPEC section 10: one span, one timer and one log line per booking request. If an exception escapes,
+        // the attempt is disposed without Finish and is recorded as an unexpected error.
+        using var attempt = _telemetry.StartBooking(command.DealershipId, command.ServiceTypeId);
+        var result = await BookAsync(command, cancellationToken);
+        attempt.Finish(result);
+        return result;
+    }
+
+    private async Task<Result<BookAppointmentResult>> BookAsync(BookAppointmentCommand command, CancellationToken cancellationToken)
+    {
         // Step 1a: request shape (no database).
         var validation = await _validator.ValidateAsync(command, cancellationToken);
         if (!validation.IsValid)
@@ -78,8 +91,9 @@ public sealed class BookAppointmentHandler
         {
             return await AttemptAsync(request, cancellationToken);
         }
-        catch (TransientDatabaseException)
+        catch (TransientDatabaseException ex)
         {
+            _telemetry.BookingRetried(ex);
             try
             {
                 return await AttemptAsync(request, cancellationToken);

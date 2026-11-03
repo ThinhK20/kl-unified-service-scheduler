@@ -57,7 +57,8 @@ public sealed class ExceptionHandlingMiddleware
                 break;
 
             case TransientDatabaseException transient:
-                _logger.LogWarning(transient, "Database busy");
+                // The client gets 503 DATABASE_BUSY (SPEC section 10: logged at Error).
+                _logger.LogError(transient, "Database busy: answered {Code}", ErrorCodes.DatabaseBusy);
                 problem = ApiProblems.From(Error.DatabaseBusy(), context);
                 break;
 

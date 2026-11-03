@@ -37,6 +37,12 @@ services:
       Swagger__Enabled: "true"
       Cors__AllowedOrigins__0: "http://localhost:3000"
       Cors__AllowedOrigins__1: "http://localhost:5173"
+      # Logs are JSON lines (one object per line, with the correlation id). "Simple" gives readable text.
+      Logging__Format: "Json"
+      # Traces and metrics exporters are off by default. To see them in the Aspire dashboard, uncomment the
+      # next line AND the aspire-dashboard service below, then open http://localhost:18888.
+      # Observability__Otlp__Endpoint: "http://aspire-dashboard:18889"
+      # Observability__ConsoleExporter: "true"   # print spans and metrics to the container log instead
     ports:
       - "5080:8080"
     depends_on:
@@ -63,6 +69,16 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+  # Optional OpenTelemetry viewer (traces, metrics and logs). Uncomment with Observability__Otlp__Endpoint above.
+  # aspire-dashboard:
+  #   image: mcr.microsoft.com/dotnet/aspire-dashboard:9.0
+  #   container_name: scheduler-otel
+  #   environment:
+  #     DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS: "true"   # local demo only: no login
+  #   ports:
+  #     - "18888:18888"   # dashboard UI
+  #     - "4317:18889"    # OTLP gRPC from the host, if the API runs outside Docker
 
 volumes:
   scheduler-sqldata:

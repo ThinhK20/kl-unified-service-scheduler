@@ -42,6 +42,12 @@ internal static class TestDays
     public static readonly DateOnly PreviewBusyDay = new(2030, 10, 2);
     public static readonly DateOnly PreviewCarBusy = new(2030, 10, 3);
 
+    // Observability: October 2030.
+    public static readonly DateOnly ObservedCreatedAndReplayed = new(2030, 10, 7);
+    public static readonly DateOnly ObservedNoAvailability = new(2030, 10, 8);
+    public static readonly DateOnly ObservedSpan = new(2030, 10, 9);
+    public static readonly DateOnly ObservedLogs = new(2030, 10, 10);
+
     public static readonly DateOnly DaysMaxRangeFrom = new(2031, 1, 1);
     public static readonly DateOnly DaysMaxRangeTo = new(2031, 2, 11); // 42 days, counting both ends
 }

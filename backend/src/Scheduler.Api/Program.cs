@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Scheduler.Api.Http;
 using Scheduler.Api.Middleware;
+using Scheduler.Api.Observability;
 using Scheduler.Api.Swagger;
 using Scheduler.Application;
 using Scheduler.Infrastructure;
@@ -16,6 +17,10 @@ const string CorsPolicy = "web";
 const string ReadyTag = "ready";
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ---- Logging, traces and metrics (SPEC section 10) ----
+builder.Logging.AddSchedulerConsoleLogging(builder.Configuration, builder.Environment);
+builder.Services.AddSchedulerObservability(builder.Configuration);
 
 // ---- Services (dependency injection; Application and Infrastructure register their own parts) ----
 builder.Services.AddApplication();
@@ -41,7 +46,7 @@ builder.Services.AddCors(options => options.AddPolicy(CorsPolicy, policy => poli
     .WithOrigins(allowedOrigins)
     .AllowAnyHeader()
     .AllowAnyMethod()
-    .WithExposedHeaders("Location", "Retry-After")));
+    .WithExposedHeaders("Location", "Retry-After", CorrelationIdMiddleware.HeaderName)));
 
 builder.Services
     .AddHealthChecks()
@@ -75,6 +80,9 @@ var app = builder.Build();
 // ---- Pipeline (order matters) ----
 // CORS first, so its headers are also on error responses written below.
 app.UseCors(CorsPolicy);
+
+// Then the correlation id, so every log line and every error response below has it.
+app.UseMiddleware<CorrelationIdMiddleware>();
 
 // Chain of Responsibility: exceptions → ProblemDetails, then empty error statuses → ProblemDetails.
 app.UseMiddleware<ExceptionHandlingMiddleware>();

@@ -302,3 +302,14 @@ the suggested times as buttons. Components only render; hooks load data; hooks c
 API on `http://localhost:5080` (container port 8080). Web on `http://localhost:5173` (dev) or
 `http://localhost:3000` (Compose). SQL Server on 1433, with the SA password in `.env` (see `.env.example`).
 Migrations and seed data run on API startup when `Database:MigrateOnStartup=true`.
+
+**Observability.** JSON console logs outside Development (`Logging:Format` = `Json` | `Simple`). Every request gets a
+correlation id: `X-Correlation-Id` is accepted when it is 1–100 characters of `[A-Za-z0-9._:-]`, otherwise a new
+32-hex id is made. It is returned in the response header, added to a log scope with the trace id, tagged on the server
+span, and added to every ProblemDetails as `correlationId`. OpenTelemetry (packages only in the Api project):
+ASP.NET Core and SqlClient spans, a `Book appointment` span (ActivitySource `Scheduler`), built-in HTTP metrics, and
+the `Scheduler` meter: `scheduler.bookings` and `scheduler.cancellations` (tag `outcome`), `scheduler.db.retries`,
+`scheduler.booking.duration` (ms). Application reports through `IAppointmentTelemetry`, so it has no OpenTelemetry
+dependency. Exporters: `Observability:Otlp:Endpoint` (empty = off) and `Observability:ConsoleExporter`. Log levels:
+created, replayed, refusals and cancels at Information (with the code), a retry at Warning, `DATABASE_BUSY` at Error,
+slot clashes at Debug. Never logged: email, phone, VIN, customer name.

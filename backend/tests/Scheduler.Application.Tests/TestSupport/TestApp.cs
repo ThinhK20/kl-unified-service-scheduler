@@ -19,6 +19,7 @@ public sealed class TestApp
         Idempotency = new FakeIdempotencyStore(Data);
         UnitOfWork = new FakeUnitOfWork();
         Catalog = new FakeCatalog(Data);
+        Telemetry = new FakeAppointmentTelemetry();
         Availability = new AvailabilityService(
             new FakeTechnicianRepository(Data),
             new FakeServiceBayRepository(Data),
@@ -39,12 +40,14 @@ public sealed class TestApp
 
     public FakeCatalog Catalog { get; }
 
+    public FakeAppointmentTelemetry Telemetry { get; }
+
     public AvailabilityService Availability { get; }
 
     public BookAppointmentHandler BookHandler(IIdempotencyStore? idempotency = null) => new(
-        new BookAppointmentValidator(), Catalog, Catalog, Catalog, Catalog, Appointments, idempotency ?? Idempotency, Availability, Clock);
+        new BookAppointmentValidator(), Catalog, Catalog, Catalog, Catalog, Appointments, idempotency ?? Idempotency, Availability, Clock, Telemetry);
 
-    public CancelAppointmentHandler CancelHandler() => new(Appointments, UnitOfWork, Clock);
+    public CancelAppointmentHandler CancelHandler() => new(Appointments, UnitOfWork, Clock, Telemetry);
 
     public GetAvailabilityHandler AvailabilityHandler() => new(new GetAvailabilityValidator(), Catalog, Catalog, Catalog, Appointments, Availability, Clock);
 

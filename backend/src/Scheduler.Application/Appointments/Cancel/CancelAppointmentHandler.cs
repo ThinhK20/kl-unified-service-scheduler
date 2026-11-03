@@ -14,17 +14,26 @@ public sealed class CancelAppointmentHandler
     private readonly IAppointmentRepository _appointments;
     private readonly IUnitOfWork _unitOfWork;
     private readonly IClock _clock;
+    private readonly IAppointmentTelemetry _telemetry;
 
-    public CancelAppointmentHandler(IAppointmentRepository appointments, IUnitOfWork unitOfWork, IClock clock)
+    public CancelAppointmentHandler(IAppointmentRepository appointments, IUnitOfWork unitOfWork, IClock clock, IAppointmentTelemetry telemetry)
     {
         _appointments = appointments;
         _unitOfWork = unitOfWork;
         _clock = clock;
+        _telemetry = telemetry;
     }
 
     public async Task<Result<AppointmentDto>> HandleAsync(CancelAppointmentCommand command, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
+        var result = await CancelAsync(command, cancellationToken);
+        _telemetry.CancellationFinished(command.AppointmentId, result);
+        return result;
+    }
+
+    private async Task<Result<AppointmentDto>> CancelAsync(CancelAppointmentCommand command, CancellationToken cancellationToken)
+    {
 
         var appointment = await _appointments.GetForCancelAsync(command.AppointmentId, cancellationToken);
         if (appointment is null)

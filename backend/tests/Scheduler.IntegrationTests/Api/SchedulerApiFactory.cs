@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Scheduler.Application.Abstractions;
 using Scheduler.IntegrationTests.Infrastructure;
+using Scheduler.IntegrationTests.Repositories;
 
 namespace Scheduler.IntegrationTests.Api;
 
@@ -27,6 +29,9 @@ public sealed class SchedulerApiFactory : WebApplicationFactory<Program>
 
     /// <summary>The clock the API uses. Tests in the collection run one at a time, so they may change it.</summary>
     public FixedClock Clock { get; } = new();
+
+    /// <summary>Every log entry of the API at Debug or above (the console provider still follows appsettings).</summary>
+    internal CapturingLoggerProvider Logs { get; } = new();
 
     /// <summary>The shared factory for this test run's database.</summary>
     public static SchedulerApiFactory For(SqlServerFixture fixture)
@@ -52,6 +57,9 @@ public sealed class SchedulerApiFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<IClock>();
             services.AddSingleton<IClock>(Clock);
+            services.AddSingleton<ILoggerProvider>(Logs);
+            services.Configure<LoggerFilterOptions>(options =>
+                options.Rules.Add(new LoggerFilterRule(typeof(CapturingLoggerProvider).FullName, null, LogLevel.Debug, null)));
         });
     }
 }

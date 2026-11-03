@@ -7,7 +7,8 @@ namespace Scheduler.Api.Http;
 
 /// <summary>
 /// The one place that turns an <see cref="Error"/> into an RFC 7807 ProblemDetails response (SPEC section 6).
-/// Extension members: <c>code</c>, <c>traceId</c>, and when present <c>errors</c> and <c>suggestedStartTimes</c>.
+/// Extension members: <c>code</c>, <c>traceId</c>, <c>correlationId</c> (SPEC section 10), and when present
+/// <c>errors</c> and <c>suggestedStartTimes</c>.
 /// </summary>
 public static class ApiProblems
 {
@@ -86,6 +87,10 @@ public static class ApiProblems
         };
         problem.Extensions["code"] = code;
         problem.Extensions["traceId"] = Activity.Current?.Id ?? httpContext.TraceIdentifier;
+        if (Middleware.CorrelationIdMiddleware.Get(httpContext) is { } correlationId)
+        {
+            problem.Extensions["correlationId"] = correlationId;
+        }
         return problem;
     }
 
