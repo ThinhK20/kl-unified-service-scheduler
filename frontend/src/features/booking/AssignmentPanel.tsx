@@ -84,10 +84,10 @@ export function AssignmentPanel({ state, preview, onRetry }: AssignmentPanelProp
 
   const startLocal = preview ? formatTime(preview.start, preview.timeZoneId) : '';
   return (
-    <section className="assign" aria-labelledby={titleId}>
-      <h3 id={titleId} className="assign__title">
+    <section className="card assign" aria-labelledby={titleId}>
+      <h2 id={titleId} className="assign__title">
         Who will serve you
-      </h3>
+      </h2>
       {state === 'loading' && <Spinner label="Checking who is free…" />}
       {state === 'error' && (
         <Alert title="We could not check who will serve you" tone="neutral">

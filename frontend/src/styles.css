@@ -255,8 +255,26 @@ a:hover {
   flex-direction: column;
   gap: 20px;
 }
-.booking__aside {
+.booking__side {
   flex: 1 1 320px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+/* Two columns: keep the summary and the serve panel in view while the steps scroll. */
+@media (min-width: 960px) {
+  .booking__side {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    /* Room for focus outlines inside the scroll box. */
+    padding: 4px;
+    margin: -4px;
+  }
+}
+.booking__aside {
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -570,16 +588,13 @@ a:hover {
 
 /* Who will serve you (assignment preview) */
 .assign {
-  margin-top: 20px;
-  padding-top: 18px;
-  border-top: 1px solid var(--color-divider);
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 .assign__title {
   margin: 0;
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 600;
 }
 .assign__note {
@@ -593,8 +608,8 @@ a:hover {
 }
 .assign__lists {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 16px;
+  grid-template-columns: 1fr;
+  gap: 12px;
 }
 .assign__group {
   border: 1px solid var(--color-border);

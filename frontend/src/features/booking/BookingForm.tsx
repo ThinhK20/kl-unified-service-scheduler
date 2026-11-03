@@ -115,35 +115,38 @@ export function BookingForm({ model }: { model: BookingFormModel }) {
             onRetry={model.refetchSlots}
             error={errors.startTime?.message}
           />
-          <AssignmentPanel
-            state={model.assignmentState}
-            preview={model.assignment}
-            onRetry={model.refetchAssignment}
-          />
         </section>
       </div>
 
-      <aside className="card booking__aside" aria-labelledby="summary-title">
-        <h2 id="summary-title" className="card__title">
-          Your booking
-        </h2>
-        <BookingSummary {...model.summary} />
-        <p className="booking__note">
-          A technician qualified for this service and a free bay are assigned when you book.
-        </p>
-        {model.errorView && (
-          <BookingErrorBox
-            error={model.errorView}
-            suggestions={model.suggestions}
-            onPickSuggestion={model.selectTime}
-            onRetry={model.retry}
-            isSaving={model.isSaving}
-          />
-        )}
-        <Button type="submit" fullWidth disabled={model.isSaving} aria-busy={model.isSaving || undefined}>
-          {model.isSaving ? 'Booking…' : 'Book appointment'}
-        </Button>
-      </aside>
+      {/* Summary and "Who will serve you" stay in view while the steps scroll (sticky on wide screens). */}
+      <div className="booking__side">
+        <aside className="card booking__aside" aria-labelledby="summary-title">
+          <h2 id="summary-title" className="card__title">
+            Your booking
+          </h2>
+          <BookingSummary {...model.summary} />
+          <p className="booking__note">
+            A technician qualified for this service and a free bay are assigned when you book.
+          </p>
+          {model.errorView && (
+            <BookingErrorBox
+              error={model.errorView}
+              suggestions={model.suggestions}
+              onPickSuggestion={model.selectTime}
+              onRetry={model.retry}
+              isSaving={model.isSaving}
+            />
+          )}
+          <Button type="submit" fullWidth disabled={model.isSaving} aria-busy={model.isSaving || undefined}>
+            {model.isSaving ? 'Booking…' : 'Book appointment'}
+          </Button>
+        </aside>
+        <AssignmentPanel
+          state={model.assignmentState}
+          preview={model.assignment}
+          onRetry={model.refetchAssignment}
+        />
+      </div>
     </form>
   );
 }
