@@ -110,7 +110,7 @@ a:hover {
   color: #ffffff;
 }
 .header__inner {
-  max-width: 1200px;
+  max-width: 1440px;
   margin: 0 auto;
   padding: 8px var(--gutter);
   min-height: 64px;
@@ -200,7 +200,7 @@ a:hover {
   padding: 32px var(--gutter) 48px;
 }
 .page--wide {
-  max-width: 1200px;
+  max-width: 1440px;
 }
 .page--narrow {
   max-width: 880px;
@@ -264,6 +264,11 @@ a:hover {
 }
 /* Two columns: keep the summary and the serve panel in view while the steps scroll. */
 @media (min-width: 960px) {
+  /* Steps keep a comfortable width; the side column takes all the remaining space. */
+  .booking {
+    display: grid;
+    grid-template-columns: minmax(520px, 640px) minmax(340px, 1fr);
+  }
   .booking__side {
     position: sticky;
     top: 16px;
@@ -608,7 +613,8 @@ a:hover {
 }
 .assign__lists {
   display: grid;
-  grid-template-columns: 1fr;
+  /* Side by side when the column is wide enough, stacked otherwise. */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 12px;
 }
 .assign__group {
