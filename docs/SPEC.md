@@ -7,8 +7,9 @@ referenced from code comments (for example "SPEC section 5").
 ## 0. Key decisions
 
 ### 0a. Product decisions
-- No login. The app works for one fixed demo customer (Id = 1).
-- The system always assigns the technician and the bay. The customer never picks them.
+- No login. Three demo customers; a "Booking as" switcher in the header picks who is booking (kept per browser).
+- The system always assigns the technician and the bay. The customer never picks them, but once a time is chosen the
+  form shows who is expected to serve them (assignment preview, section 6).
 - The customer's flow follows the build plan: vehicle dropdown, dealership, service type, date picker, free start
   times, then a confirmation card on the same page. The UI design (`docs/design/`) sets the look: colours, fonts,
   header, cards and spacing.
@@ -129,7 +130,9 @@ Rules:
 ### Seed data (fixed Ids)
 Both dealerships use `Asia/Ho_Chi_Minh`.
 - Dealership 1 "District 1 Service Centre", 08:00–17:00. Dealership 2 "Thu Duc Service Centre", 07:30–18:00.
-- Customer 1 "Demo Customer" with vehicles 1 (Toyota Vios 2021) and 2 (Honda CR-V 2023).
+- Customer 1 "An Nguyen" with vehicles 1 (Toyota Vios 2021) and 2 (Honda CR-V 2023); customer 2 "Binh Tran" with
+  vehicle 3 (VinFast VF 8 2024); customer 3 "Chi Le" with vehicles 4 (Mazda CX-5 2022) and 5 (Kia Morning 2020).
+  Customers 2–3 and vehicles 3–5 come from the `ThreeDemoCustomers` migration.
 
 | Id | Dealer | Service | Min | Skill | Min tier | Bay |
 |---|---|---|---|---|---|---|
@@ -188,9 +191,11 @@ needs an offset (for example `"2026-11-10T10:30:00+07:00"`).
 |---|---|---|
 | GET | /api/dealerships | 200 |
 | GET | /api/service-types?dealershipId= | 200, 400 |
+| GET | /api/customers | 200 |
 | GET | /api/customers/{id}/vehicles | 200, 404 |
 | GET | /api/dealerships/{id}/availability?serviceTypeId=&date=YYYY-MM-DD[&vehicleId=] | 200, 400, 404, 422 |
 | GET | /api/dealerships/{id}/availability/days?serviceTypeId=&from=&to=[&vehicleId=] | 200, 400, 404, 422 |
+| GET | /api/dealerships/{id}/assignment-preview?serviceTypeId=&startTime=[&vehicleId=] | 200, 400, 404, 422 |
 | POST | /api/appointments (header `Idempotency-Key`) | 201, 400, 404, 409, 422, 503 |
 | GET | /api/appointments?customerId= | 200, 400 |
 | GET | /api/appointments/{id} | 200, 404 |
@@ -200,10 +205,16 @@ needs an offset (for example `"2026-11-10T10:30:00+07:00"`).
 ```ts
 DealershipDto   { id; name; timeZoneId; openTime: "HH:mm"; closeTime: "HH:mm" }
 ServiceTypeDto  { id; dealershipId; name; durationMinutes; requiredSkill; minimumTier; requiredBayType }
+CustomerDto     { id; name; email; phone }
 VehicleDto      { id; customerId; vin; make; model; year }
 AvailabilityDto { dealershipId; serviceTypeId; date; timeZoneId; durationMinutes;
                   slots: { startUtc; endUtc }[];                                  // exactly the Available times
                   times: { startUtc; endUtc; status: "Past" | "VehicleBooked" | "Booked" | "Available" }[] }
+AssignmentPreviewDto { dealershipId; serviceTypeId; timeZoneId; startUtc; endUtc;
+                  status: "Past" | "VehicleBooked" | "NoAvailability" | "Assignable";
+                  technician { id; name } | null; serviceBay { id; name; bayType } | null;
+                  technicians: { id; name; state: "WillServe" | "Free" | "Busy" | "OffShift" | "NotQualified" | "Inactive" }[];
+                  serviceBays: { id; name; bayType; state: "WillServe" | "Free" | "Busy" | "WrongType" | "Inactive" }[] }
 AvailabilityDaysDto { dealershipId; serviceTypeId; from; to; timeZoneId; durationMinutes;
                   days: { date; availableCount; status: "Past" | "FullyBooked" | "Available" }[] }
 BookAppointmentRequest { customerId; vehicleId; dealershipId; serviceTypeId; startTime }
@@ -227,6 +238,22 @@ AppointmentDto  { id; status; startUtc; endUtc; createdUtc; customerId;
   lookups); each day is then computed in memory. Days before today load nothing.
 - The web app uses this for a calendar that disables past and fully booked days (still focusable and announced), and a
   time list that shows taken times disabled with the reason ("Booked", "Your car is booked"); past times are hidden.
+
+**Assignment preview (read-only, reserves nothing).** "Who would serve this booking if it were made now."
+- `startTime` uses the booking request's rules and messages (offset required, on the grid, supported years; URL-encode
+  the `+`). 404s and 422s as availability; a job outside opening hours is 422 with booking's message. A past start is
+  not an error: it returns status `Past`.
+- Status, first match wins, in booking's order: `Past` → `VehicleBooked` → `NoAvailability` → `Assignable`. When
+  Assignable, `technician` and `serviceBay` are exactly `FindPairs(range)[0]` from the same `LoadDayAsync` schedule
+  booking uses (same counts, same strategy), so booking right away gets the same pair (integration-tested). Someone
+  else can still book first; the confirmation shows the final pick.
+- `technicians` / `serviceBays` list every resource of the dealership, inactive ones too, with a state from the same
+  rules `FindPairs` uses (active, qualified, shift covers the range, free slots, bay type). Order: WillServe, Free,
+  Busy, OffShift, NotQualified / WrongType, Inactive; then by name.
+- In the web app the panel appears once an Available time is chosen. When the preview is not Assignable it shows a
+  one-line reason instead of a pick; if the preview cannot be loaded it says so and booking still works. The
+  "Booking as" switcher is disabled while a booking request is in flight; in the live preview "Reset demo data" also
+  switches back to the first customer.
 
 Errors are RFC 7807 ProblemDetails: `{ type, title, status, detail, code, traceId, errors?, suggestedStartTimes? }`.
 

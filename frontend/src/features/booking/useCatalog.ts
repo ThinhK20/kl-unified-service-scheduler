@@ -4,10 +4,12 @@ import { queryKeys } from '../../lib/queryKeys';
 
 const CATALOG_STALE_MS = 5 * 60_000;
 
-export function useVehicles(customerId: number) {
+/** The customer's vehicles. Waits until a customer is known. */
+export function useVehicles(customerId: number | null) {
   return useQuery({
-    queryKey: queryKeys.vehicles(customerId),
-    queryFn: ({ signal }) => getCustomerVehicles(customerId, signal),
+    queryKey: queryKeys.vehicles(customerId ?? 0),
+    queryFn: ({ signal }) => getCustomerVehicles(customerId as number, signal),
+    enabled: customerId !== null,
     staleTime: CATALOG_STALE_MS,
   });
 }

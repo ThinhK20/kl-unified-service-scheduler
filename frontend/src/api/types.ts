@@ -22,6 +22,13 @@ export interface ServiceTypeDto {
   requiredBayType: string;
 }
 
+export interface CustomerDto {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+}
+
 export interface VehicleDto {
   id: number;
   customerId: number;
@@ -72,6 +79,26 @@ export interface AvailabilityDaysDto {
   timeZoneId: string;
   durationMinutes: number;
   days: DayAvailabilityDto[];
+}
+
+/** "Who would serve this booking if it were made now" (customers contract, section 3). First match wins. */
+export type AssignmentStatus = 'Past' | 'VehicleBooked' | 'NoAvailability' | 'Assignable';
+export type TechnicianState = 'WillServe' | 'Free' | 'Busy' | 'OffShift' | 'NotQualified' | 'Inactive';
+export type BayState = 'WillServe' | 'Free' | 'Busy' | 'WrongType' | 'Inactive';
+
+export interface AssignmentPreviewDto {
+  dealershipId: number;
+  serviceTypeId: number;
+  timeZoneId: string;
+  startUtc: UtcIsoString;
+  endUtc: UtcIsoString;
+  status: AssignmentStatus;
+  /** The expected pick; only when status is "Assignable". */
+  technician: { id: number; name: string } | null;
+  serviceBay: { id: number; name: string; bayType: string } | null;
+  /** Every technician of the dealership (inactive too), WillServe first. */
+  technicians: { id: number; name: string; state: TechnicianState }[];
+  serviceBays: { id: number; name: string; bayType: string; state: BayState }[];
 }
 
 export interface BookAppointmentRequest {
@@ -210,6 +237,7 @@ function isStringArrayRecord(value: unknown): value is Record<string, string[]> 
 // Times are real Date objects (instants); format them with the dealership's zone.
 // ---------------------------------------------------------------------------
 
+export type Customer = CustomerDto;
 export type Dealership = DealershipDto;
 export type ServiceType = ServiceTypeDto;
 
@@ -269,4 +297,9 @@ export interface Appointment {
   serviceType: AppointmentDto['serviceType'];
   technician: AppointmentDto['technician'];
   serviceBay: AppointmentDto['serviceBay'];
+}
+
+export interface AssignmentPreview extends Omit<AssignmentPreviewDto, 'startUtc' | 'endUtc'> {
+  start: Date;
+  end: Date;
 }

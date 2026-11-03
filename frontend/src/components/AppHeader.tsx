@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import { CustomerSwitcher } from '../features/customers/CustomerSwitcher';
 
 export function AppHeader() {
   const navClass = ({ isActive }: { isActive: boolean }) => `nav__link${isActive ? ' nav__link--active' : ''}`;
@@ -30,7 +31,7 @@ export function AppHeader() {
             My appointments
           </NavLink>
         </nav>
-        <span className="header__user">Demo customer</span>
+        <CustomerSwitcher />
       </div>
     </header>
   );

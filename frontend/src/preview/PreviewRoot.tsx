@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { App } from '../App';
+import { clearStoredCustomerId } from '../features/customers/customerStorage';
 import { runTour, TourStopped, type TourStep } from './demoTour';
 import type { MockSchedulerBackend } from './mockBackend';
 import { PreviewBanner } from './PreviewBanner';
@@ -29,6 +30,8 @@ export function PreviewRoot({ onResetData, backend, autoPlay = false }: PreviewR
 
   const reset = useCallback(() => {
     onResetData();
+    // Back to the first customer (An Nguyen) too; the remount below reads the selection again.
+    clearStoredCustomerId();
     queryClient.clear();
     setGeneration((g) => g + 1);
   }, [onResetData, queryClient]);

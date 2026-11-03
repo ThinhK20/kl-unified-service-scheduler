@@ -7,7 +7,7 @@ using Scheduler.Application.Catalog.Queries;
 
 namespace Scheduler.Api.Controllers;
 
-/// <summary>Dealerships and their free times.</summary>
+/// <summary>Dealerships, their free times and the expected technician and bay.</summary>
 [ApiController]
 [Route("api/dealerships")]
 public sealed class DealershipsController : ControllerBase
@@ -86,6 +86,42 @@ public sealed class DealershipsController : ControllerBase
         CancellationToken cancellationToken)
     {
         var query = new GetAvailabilityDaysQuery(id, serviceTypeId, from, to, RawVehicleId(vehicleId));
+        var result = await handler.HandleAsync(query, cancellationToken);
+        return this.ToActionResult(result, dto => Ok(dto));
+    }
+
+    /// <summary>
+    /// Which technician and bay booking would pick for this start time if it were made now, and the state of every
+    /// technician and bay of the dealership (SPEC section 6). Nothing is reserved; the booking endpoint stays the final authority.
+    /// </summary>
+    /// <param name="id">Dealership id.</param>
+    /// <param name="serviceTypeId">Service type id (must be offered at this dealership).</param>
+    /// <param name="startTime">Start, ISO-8601 with an offset, on the 15-minute grid (same rules as the booking request).</param>
+    /// <param name="vehicleId">Optional positive vehicle id. When the car is booked anywhere in the range the status is VehicleBooked.</param>
+    /// <param name="handler">Use case handler (injected).</param>
+    /// <param name="cancellationToken">Request cancellation.</param>
+    /// <response code="200">
+    /// <c>status</c> (first match wins): Past, VehicleBooked, NoAvailability, Assignable. When Assignable,
+    /// <c>technician</c> and <c>serviceBay</c> are the first pair booking would try; otherwise null. <c>technicians</c> and
+    /// <c>serviceBays</c> list every resource with a state, the expected pick (WillServe) first.
+    /// </response>
+    /// <response code="400">Missing or badly formatted parameters (startTime without an offset or off the grid, bad vehicleId).</response>
+    /// <response code="404">Unknown dealership, service type or vehicle.</response>
+    /// <response code="422">Inactive dealership or service, the service is not offered here, or the job is outside opening hours.</response>
+    [HttpGet("{id:int}/assignment-preview")]
+    [ProducesResponseType<AssignmentPreviewDto>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest, ApiProblems.ContentType)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, ApiProblems.ContentType)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status422UnprocessableEntity, ApiProblems.ContentType)]
+    public async Task<IActionResult> GetAssignmentPreview(
+        int id,
+        [FromQuery] int serviceTypeId,
+        [FromQuery] string? startTime,
+        [FromQuery] string? vehicleId,
+        [FromServices] GetAssignmentPreviewHandler handler,
+        CancellationToken cancellationToken)
+    {
+        var query = new GetAssignmentPreviewQuery(id, serviceTypeId, startTime, RawVehicleId(vehicleId));
         var result = await handler.HandleAsync(query, cancellationToken);
         return this.ToActionResult(result, dto => Ok(dto));
     }

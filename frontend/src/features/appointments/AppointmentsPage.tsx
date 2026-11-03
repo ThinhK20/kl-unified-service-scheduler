@@ -3,8 +3,8 @@ import { isApiError } from '../../api/types';
 import { Alert } from '../../components/Alert';
 import { Button } from '../../components/Button';
 import { Spinner } from '../../components/Spinner';
-import { DEMO_CUSTOMER_ID } from '../../config';
 import { useNow } from '../../lib/useNow';
+import { useCustomer } from '../customers/customerContext';
 import { AppointmentCard } from './AppointmentCard';
 import { isCancellable } from './appointmentRules';
 import { useAppointments } from './useAppointments';
@@ -19,7 +19,8 @@ function cancelErrorText(error: Error | null): string {
 }
 
 export function AppointmentsPage() {
-  const appointments = useAppointments(DEMO_CUSTOMER_ID);
+  const customer = useCustomer();
+  const appointments = useAppointments(customer.customerId);
   const cancel = useCancelAppointment();
   const now = useNow();
 
@@ -35,10 +36,13 @@ export function AppointmentsPage() {
         </Link>
       </div>
 
-      {appointments.isPending && <Spinner label="Loading your appointments…" />}
-      {appointments.isError && (
+      {appointments.isPending && customer.status !== 'error' && <Spinner label="Loading your appointments…" />}
+      {(appointments.isError || customer.status === 'error') && (
         <Alert title="We could not load your appointments">
-          <Button variant="secondary" onClick={() => void appointments.refetch()}>
+          <Button
+            variant="secondary"
+            onClick={() => (customer.status === 'error' ? customer.retry() : void appointments.refetch())}
+          >
             Try again
           </Button>
         </Alert>

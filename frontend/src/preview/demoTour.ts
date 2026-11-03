@@ -29,7 +29,7 @@ export class TourStopped extends Error {
   }
 }
 
-const TOTAL_STEPS = 8;
+const TOTAL_STEPS = 9;
 
 export async function runTour(options: TourOptions): Promise<void> {
   const { backend, resetApp, onStep, signal } = options;
@@ -166,6 +166,15 @@ export async function runTour(options: TourOptions): Promise<void> {
     resetApp();
     await sleep(900);
     await waitFor(() => root.querySelector('.cal'), 'the booking form');
+    // The tour books as An Nguyen (customer 1). The reset already selects her; this covers anything else.
+    const bookingAs = await waitFor(() => {
+      const select = fieldByLabel<HTMLSelectElement>('Booking as');
+      return select && !select.disabled ? select : null;
+    }, 'the "Booking as" list');
+    if (bookingAs.value !== '1') {
+      await choose('Booking as', 'An Nguyen');
+      await waitFor(() => root.querySelector('.cal'), 'the booking form');
+    }
     // Tomorrow in the dealership's time zone (the calendar pages to next month when needed).
     const demoDate = addDays(localDateOf(Date.now(), TIME_ZONE), 1);
 
@@ -173,11 +182,31 @@ export async function runTour(options: TourOptions): Promise<void> {
     step(2, 'Booking an EV battery check', 'Toyota Vios at District 1, tomorrow. Fully booked days and taken times cannot be picked.');
     await fillBooking('Toyota', 'EV battery check', demoDate);
     await pickSlot('10:00');
+
+    // 3. Before booking: who is expected to serve this time.
+    const pickRow = (list: string) =>
+      Array.from(root.querySelectorAll<HTMLElement>('.assign__group'))
+        .find((g) => text(g.querySelector('.assign__heading') ?? g) === list)
+        ?.querySelector<HTMLElement>('.assign__row--pick .assign__name');
+    const panel = await waitFor(
+      () => (pickRow('Technician') && pickRow('Service bay') ? root.querySelector<HTMLElement>('.assign') : null),
+      'the "Who will serve you" panel',
+    );
+    const technicianName = text(pickRow('Technician')!);
+    const bayName = text(pickRow('Service bay')!).split(' · ')[0];
+    step(
+      3,
+      `${technicianName} will serve you, ${bayName}`,
+      'Before you book, the form shows every technician and bay with its state, and the expected pick. The system still assigns them when you book.',
+    );
+    await point(panel);
+    await sleep(2600);
+    release(panel);
     await book();
     await waitFor(() => root.querySelector('.confirm'), 'the confirmation');
     const firstRef = confirmationValue('Booking reference');
     step(
-      3,
+      4,
       'Booked: the system chose the people and the place',
       `Technician ${confirmationValue('Technician')} (the EV specialist) and ${confirmationValue('Service bay')} (the EV bay) were assigned automatically.`,
     );
@@ -188,7 +217,7 @@ export async function runTour(options: TourOptions): Promise<void> {
     // 4. The same car cannot be booked twice at once: the time is shown, disabled, with the reason.
     const another = await waitFor(() => findButton('Book another service'), 'Book another service');
     await click(another);
-    step(4, 'One car, one place at a time', 'Same service and day for the Toyota again: 10:00 is shown but disabled, because this car is already booked then.');
+    step(5, 'One car, one place at a time', 'Same service and day for the Toyota again: 10:00 is shown but disabled, because this car is already booked then.');
     await fillBooking('Toyota', 'EV battery check', demoDate);
     const carBooked = await waitFor(() => findSlot('10:00', '.slot--car-booked'), 'the 10:00 "Your car is booked" time');
     await point(carBooked);
@@ -196,7 +225,7 @@ export async function runTour(options: TourOptions): Promise<void> {
     release(carBooked);
 
     // 5. Second booking, with a race.
-    step(5, 'A second booking, and someone is faster', 'Switching to the Honda CR-V, 11:00. While we fill the form, another customer takes 11:00.');
+    step(6, 'A second booking, and someone is faster', 'Switching to the Honda CR-V, 11:00. While we fill the form, another customer takes 11:00.');
     await choose('Vehicle', 'Honda');
     await pickSlot('11:00');
     backend.simulateOtherCustomerBooking(1, 4, localToUtc(demoDate, '11:00', TIME_ZONE));
@@ -209,7 +238,7 @@ export async function runTour(options: TourOptions): Promise<void> {
       },
       'the suggested times',
     );
-    step(6, 'No double booking: 409 with suggestions', 'The slot was taken a moment ago, so the API refused it, the list now shows 11:00 as booked, and the nearest free times are offered.');
+    step(7, 'No double booking: 409 with suggestions', 'The slot was taken a moment ago, so the API refused it, the list now shows 11:00 as booked, and the nearest free times are offered.');
     await point(suggestion.closest('.alert') as HTMLElement);
     await sleep(2600);
     release(suggestion.closest('.alert') as HTMLElement);
@@ -219,7 +248,7 @@ export async function runTour(options: TourOptions): Promise<void> {
     await sleep(1800);
 
     // 6. Cancel the first booking.
-    step(7, 'Cancelling the first booking', 'Cancel asks for confirmation, then frees the technician, bay and car.');
+    step(8, 'Cancelling the first booking', 'Cancel asks for confirmation, then frees the technician, bay and car.');
     await click(await waitFor(() => findButton('View my appointments'), 'View my appointments'));
     const card = await waitFor(
       () => Array.from(root.querySelectorAll<HTMLElement>('article.appt')).find((a) => firstRef && text(a).includes(firstRef)),
@@ -233,7 +262,7 @@ export async function runTour(options: TourOptions): Promise<void> {
     await sleep(1500);
     release(card);
 
-    step(8, 'Tour complete', 'Everything you saw ran through the real screens. Try it yourself, or reset the data.');
+    step(9, 'Tour complete', 'Everything you saw ran through the real screens. Try it yourself, or reset the data.');
   } finally {
     cursor.remove();
     root.querySelectorAll('.demo-target').forEach((el) => el.classList.remove('demo-target'));

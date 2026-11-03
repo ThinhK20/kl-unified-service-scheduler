@@ -29,4 +29,10 @@ public static class CatalogMapper
         vehicle.Make,
         vehicle.Model,
         vehicle.Year);
+
+    public static CustomerDto ToDto(Customer customer) => new(
+        customer.Id,
+        customer.Name,
+        customer.Email,
+        customer.Phone);
 }

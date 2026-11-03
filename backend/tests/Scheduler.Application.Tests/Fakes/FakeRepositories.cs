@@ -245,5 +245,8 @@ public sealed class FakeCatalog : IDealershipRepository, IServiceTypeRepository,
         Task.FromResult<IReadOnlyList<Vehicle>>(_data.Vehicles.Where(v => v.CustomerId == customerId).ToList());
 
     public Task<bool> ExistsAsync(int customerId, CancellationToken cancellationToken) =>
-        Task.FromResult(_data.Customers.Contains(customerId));
+        Task.FromResult(_data.Customers.Any(c => c.Id == customerId));
+
+    public Task<IReadOnlyList<Customer>> GetAllAsync(CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<Customer>>(_data.Customers.OrderBy(c => c.Id).ToList());
 }

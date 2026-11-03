@@ -16,6 +16,8 @@ export function useCancelAppointment() {
       Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.appointmentsAll }),
         queryClient.invalidateQueries({ queryKey: queryKeys.availabilityAll }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.availabilityDaysAll }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.assignmentPreviewAll }),
       ]),
   });
 

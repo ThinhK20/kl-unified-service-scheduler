@@ -3,7 +3,7 @@ import { useCallback, useRef } from 'react';
 import { bookAppointment } from '../../api/appointmentsApi';
 import { isApiError, type Appointment, type BookAppointmentRequest } from '../../api/types';
 import { createIdempotencyKey } from '../../lib/idempotency';
-import { queryKeys } from '../../lib/queryKeys';
+import { mutationKeys, queryKeys } from '../../lib/queryKeys';
 
 interface BookingAttempt {
   request: BookAppointmentRequest;
@@ -22,9 +22,11 @@ export function useBookAppointment() {
   const invalidateAvailability = () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.availabilityAll });
     void queryClient.invalidateQueries({ queryKey: queryKeys.availabilityDaysAll });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.assignmentPreviewAll });
   };
 
   const mutation = useMutation<Appointment, Error, BookingAttempt>({
+    mutationKey: mutationKeys.bookAppointment,
     mutationFn: ({ request, idempotencyKey }) => bookAppointment(request, idempotencyKey),
     retry: false,
     onSuccess: () => {
@@ -32,10 +34,8 @@ export function useBookAppointment() {
       invalidateAvailability();
     },
     onError: (error) => {
-      // Someone took the time, or the car is busy then: the times and days shown are out of date.
-      if (isApiError(error) && (error.code === 'NO_AVAILABILITY' || error.code === 'VEHICLE_ALREADY_BOOKED')) {
-        invalidateAvailability();
-      }
+      // Any 409 (time taken, car busy, ...): the times, days and expected pick shown may be out of date.
+      if (isApiError(error) && error.status === 409) invalidateAvailability();
     },
   });
 

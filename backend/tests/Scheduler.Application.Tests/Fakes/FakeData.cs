@@ -4,21 +4,25 @@ using Scheduler.Domain.Enums;
 
 namespace Scheduler.Application.Tests.Fakes;
 
-/// <summary>In-memory copy of the SPEC seed data, plus a second customer for ownership tests.</summary>
+/// <summary>In-memory copy of the SPEC seed data (three demo customers, five vehicles).</summary>
 public sealed class FakeData
 {
     public const string TimeZone = "Asia/Ho_Chi_Minh";
 
     public FakeData()
     {
-        Customers.AddRange([1, 2]);
+        Customers.Add(Customer.Create("An Nguyen", "an.nguyen@example.com", "+84 900 000 001").WithId(1));
+        Customers.Add(Customer.Create("Binh Tran", "binh.tran@example.com", "+84 900 000 002").WithId(2));
+        Customers.Add(Customer.Create("Chi Le", "chi.le@example.com", "+84 900 000 003").WithId(3));
 
         Dealerships.Add(Dealership.Create("District 1 Service Centre", TimeZone, new TimeOnly(8, 0), new TimeOnly(17, 0)).WithId(1));
         Dealerships.Add(Dealership.Create("Thu Duc Service Centre", TimeZone, new TimeOnly(7, 30), new TimeOnly(18, 0)).WithId(2));
 
         Vehicles.Add(Vehicle.Create(1, "JTDBT923X71000001", "Toyota", "Vios", 2021).WithId(1));
         Vehicles.Add(Vehicle.Create(1, "7FARW2H58PE000002", "Honda", "CR-V", 2023).WithId(2));
-        Vehicles.Add(Vehicle.Create(2, "WVWZZZ1KZ6W000003", "VW", "Golf", 2019).WithId(3));
+        Vehicles.Add(Vehicle.Create(2, "RLLV8EAA5RV000003", "VinFast", "VF 8", 2024).WithId(3));
+        Vehicles.Add(Vehicle.Create(3, "JM3KFBCM1N0000004", "Mazda", "CX-5", 2022).WithId(4));
+        Vehicles.Add(Vehicle.Create(3, "KNABE511AL0000005", "Kia", "Morning", 2020).WithId(5));
 
         ServiceTypes.Add(ServiceType.Create(1, "Oil change", 60, Skill.General, SkillTier.Trainee, BayType.Standard).WithId(1));
         ServiceTypes.Add(ServiceType.Create(1, "Brake inspection", 90, Skill.Brakes, SkillTier.Qualified, BayType.Lift).WithId(2));
@@ -43,7 +47,7 @@ public sealed class FakeData
         ServiceBays.Add(bay4);
     }
 
-    public List<int> Customers { get; } = [];
+    public List<Customer> Customers { get; } = [];
 
     public List<Dealership> Dealerships { get; } = [];
 

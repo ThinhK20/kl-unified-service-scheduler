@@ -34,6 +34,40 @@ export type StartTimeStatus = 'Past' | 'VehicleBooked' | 'Booked' | 'Available';
 /** Availability contract v2, section 2. */
 export type DayStatus = 'Past' | 'FullyBooked' | 'Available';
 
+/** Assignment preview (customers contract, section 3). First match wins, in this order. */
+export type AssignmentStatus = 'Past' | 'VehicleBooked' | 'NoAvailability' | 'Assignable';
+export type TechnicianState = 'WillServe' | 'Free' | 'Busy' | 'OffShift' | 'NotQualified' | 'Inactive';
+export type BayState = 'WillServe' | 'Free' | 'Busy' | 'WrongType' | 'Inactive';
+
+const TECHNICIAN_STATE_ORDER: readonly TechnicianState[] = ['WillServe', 'Free', 'Busy', 'OffShift', 'NotQualified', 'Inactive'];
+const BAY_STATE_ORDER: readonly BayState[] = ['WillServe', 'Free', 'Busy', 'WrongType', 'Inactive'];
+
+/** One UTF-16 code unit upper-cased on its own; units whose upper case is not a single unit (e.g. "ß") stay. */
+function upperUnit(code: number): number {
+  if (code >= 97 && code <= 122) return code - 32; // a-z
+  if (code < 128) return code;
+  const upper = String.fromCharCode(code).toUpperCase();
+  return upper.length === 1 ? upper.charCodeAt(0) : code;
+}
+
+/**
+ * Like .NET StringComparer.OrdinalIgnoreCase: compare code unit by code unit after a per-unit simple upper case
+ * (never changes the length), then the shorter string first. Exact for ASCII names; stable for anything else.
+ */
+export function compareOrdinalIgnoreCase(a: string, b: string): number {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) {
+    const diff = upperUnit(a.charCodeAt(i)) - upperUnit(b.charCodeAt(i));
+    if (diff !== 0) return diff;
+  }
+  return a.length - b.length;
+}
+
+/** Groups in the given state order, by name within a group. */
+function sortByState<T extends { name: string; state: S }, S extends string>(rows: T[], order: readonly S[]): T[] {
+  return [...rows].sort((a, b) => order.indexOf(a.state) - order.indexOf(b.state) || compareOrdinalIgnoreCase(a.name, b.name));
+}
+
 // ---------------------------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------------------------
@@ -183,6 +217,34 @@ function dateFailure(field: string, value: string): string | null {
   if (!isIsoDate(value)) return `${field} must be in the format YYYY-MM-DD.`;
   if (!yearInRange(Number(value.slice(0, 4)))) return `${field} must be between the years ${MIN_YEAR} and ${MAX_YEAR}.`;
   return null;
+}
+
+/**
+ * The booking request's startTime rules (BookAppointmentValidator): required, ISO-8601 with an offset, supported
+ * years, on the 15-minute grid with zero seconds. Returns UTC ms, or null after adding the failure.
+ */
+function readStartTime(startTime: string, failures: [string, string][]): number | null {
+  if (startTime.trim() === '') {
+    failures.push(['startTime', 'startTime is required.']);
+    return null;
+  }
+  const parsed = parseWithOffset(startTime);
+  if (!parsed) {
+    failures.push([
+      'startTime',
+      'startTime must be an ISO-8601 date and time with an offset, for example 2026-11-10T10:30:00+07:00.',
+    ]);
+    return null;
+  }
+  if (!yearInRange(new Date(parsed.utc).getUTCFullYear())) {
+    failures.push(['startTime', `startTime must be between the years ${MIN_YEAR} and ${MAX_YEAR}.`]);
+    return null;
+  }
+  if (!parsed.wholeSeconds || !isOnGrid(parsed.utc)) {
+    failures.push(['startTime', 'startTime must be on the 15-minute grid (:00, :15, :30 or :45, with zero seconds).']);
+    return null;
+  }
+  return parsed.utc;
 }
 
 /**
@@ -393,6 +455,11 @@ export class MockSchedulerBackend {
         pattern: /^\/api\/dealerships\/(-?\d+)\/availability\/days$/,
         methods: { GET: (m, q) => this.getAvailabilityDays(Number(m[1]), q) },
       },
+      {
+        pattern: /^\/api\/dealerships\/(-?\d+)\/assignment-preview$/,
+        methods: { GET: (m, q) => this.getAssignmentPreview(Number(m[1]), q) },
+      },
+      { pattern: /^\/api\/customers$/, methods: { GET: () => this.ok(this.getCustomers()) } },
       { pattern: /^\/api\/service-types$/, methods: { GET: (_m, q) => this.getServiceTypes(q) } },
       { pattern: /^\/api\/customers\/(-?\d+)\/vehicles$/, methods: { GET: (m) => this.getVehicles(Number(m[1])) } },
       {
@@ -464,6 +531,10 @@ export class MockSchedulerBackend {
           requiredBayType,
         })),
     );
+  }
+
+  private getCustomers() {
+    return [...customers].sort((a, b) => a.id - b.id).map(({ id, name, email, phone }) => ({ id, name, email, phone }));
   }
 
   private getVehicles(customerId: number): MockResponse {
@@ -579,6 +650,98 @@ export class MockSchedulerBackend {
     const ruleError = this.offerRules(dealership, service);
     if (ruleError) return { error: ruleError };
     return { dealership, service };
+  }
+
+  // --- assignment preview (contract: "Who will serve you", section 3) ------------------------
+
+  private getAssignmentPreview(dealershipId: number, query: URLSearchParams): MockResponse {
+    const path = `/api/dealerships/${dealershipId}/assignment-preview`;
+    const rawService = query.get('serviceTypeId');
+    if (rawService !== null && rawService !== '' && !/^-?\d+$/.test(rawService)) {
+      return this.problem(path, this.unreadable('serviceTypeId'));
+    }
+    const serviceTypeId = rawService ? Number(rawService) : 0;
+
+    const failures: [string, string][] = [];
+    if (dealershipId <= 0) failures.push(['dealershipId', 'dealershipId is required.']);
+    if (serviceTypeId <= 0) failures.push(['serviceTypeId', 'serviceTypeId is required.']);
+    const startUtc = readStartTime(query.get('startTime') ?? '', failures);
+    const vehicleId = readVehicleId(query, failures);
+    if (failures.length > 0 || startUtc === null) return this.problem(path, validationError(failures));
+
+    const offer = this.availabilityOffer(dealershipId, serviceTypeId, vehicleId);
+    if ('error' in offer) return this.problem(path, offer.error);
+    const { dealership, service } = offer;
+    const range = { start: startUtc, end: startUtc + service.durationMinutes * 60_000 };
+    const now = this.now();
+    // Past is answered before the opening-hours rule (like the real API): a past time is never a 422 here.
+    if (range.start > now && !windowCovers(dealership.openTime, dealership.closeTime, range, dealership.timeZoneId)) {
+      return this.problem(path, rule(MESSAGES.outsideOpeningHours));
+    }
+
+    const preview = this.assignmentPreview(dealership, service, range, vehicleId, now);
+    return this.ok({
+      dealershipId: dealership.id,
+      serviceTypeId: service.id,
+      timeZoneId: dealership.timeZoneId,
+      startUtc: formatUtc(range.start),
+      endUtc: formatUtc(range.end),
+      ...preview,
+    });
+  }
+
+  /**
+   * Status (Past -> VehicleBooked -> NoAvailability -> Assignable, like booking), the pick (FindPairs[0], exactly
+   * what booking would try now) and the state of EVERY technician and bay of the dealership.
+   */
+  assignmentPreview(
+    dealership: SeedDealership,
+    service: SeedServiceType,
+    range: Range,
+    vehicleId: number | null,
+    nowUtc: number,
+  ) {
+    const localDate = localDateOf(range.start, dealership.timeZoneId);
+    let status: AssignmentStatus;
+    let pick: Pair | undefined;
+    if (range.start <= nowUtc) status = 'Past';
+    else if (vehicleId !== null && !this.isFree('vehicleId', vehicleId, range)) status = 'VehicleBooked';
+    else {
+      pick = this.findPairs(dealership, service, localDate, range)[0];
+      status = pick ? 'Assignable' : 'NoAvailability';
+    }
+
+    const technicianState = (t: SeedTechnician): TechnicianState => {
+      if (pick && pick.technician.id === t.id) return 'WillServe';
+      if (!t.isActive) return 'Inactive';
+      if (!isQualified(t, service)) return 'NotQualified';
+      if (!windowCovers(t.shiftStart, t.shiftEnd, range, dealership.timeZoneId)) return 'OffShift';
+      return this.isFree('technicianId', t.id, range) ? 'Free' : 'Busy';
+    };
+    const bayState = (b: SeedBay): BayState => {
+      if (pick && pick.bay.id === b.id) return 'WillServe';
+      if (!b.isActive) return 'Inactive';
+      if (b.bayType !== service.requiredBayType) return 'WrongType';
+      return this.isFree('serviceBayId', b.id, range) ? 'Free' : 'Busy';
+    };
+
+    return {
+      status,
+      technician: pick ? { id: pick.technician.id, name: pick.technician.name } : null,
+      serviceBay: pick ? { id: pick.bay.id, name: pick.bay.name, bayType: pick.bay.bayType } : null,
+      technicians: sortByState(
+        technicians
+          .filter((t) => t.dealershipId === dealership.id)
+          .map((t) => ({ id: t.id, name: t.name, state: technicianState(t) })),
+        TECHNICIAN_STATE_ORDER,
+      ),
+      serviceBays: sortByState(
+        bays
+          .filter((b) => b.dealershipId === dealership.id)
+          .map((b) => ({ id: b.id, name: b.name, bayType: b.bayType, state: bayState(b) })),
+        BAY_STATE_ORDER,
+      ),
+    };
   }
 
   private offerRules(dealership: SeedDealership, service: SeedServiceType): AppError | null {
@@ -745,20 +908,8 @@ export class MockSchedulerBackend {
     if (vehicleId <= 0) failures.push(['vehicleId', 'vehicleId is required.']);
     if (dealershipId <= 0) failures.push(['dealershipId', 'dealershipId is required.']);
     if (serviceTypeId <= 0) failures.push(['serviceTypeId', 'serviceTypeId is required.']);
-    const parsed = startTime.trim() === '' ? null : parseWithOffset(startTime);
-    if (startTime.trim() === '') failures.push(['startTime', 'startTime is required.']);
-    else if (!parsed) {
-      failures.push([
-        'startTime',
-        'startTime must be an ISO-8601 date and time with an offset, for example 2026-11-10T10:30:00+07:00.',
-      ]);
-    } else if (!yearInRange(new Date(parsed.utc).getUTCFullYear())) {
-      failures.push(['startTime', `startTime must be between the years ${MIN_YEAR} and ${MAX_YEAR}.`]);
-    } else if (!parsed.wholeSeconds || !isOnGrid(parsed.utc)) {
-      failures.push(['startTime', 'startTime must be on the 15-minute grid (:00, :15, :30 or :45, with zero seconds).']);
-    }
-    if (failures.length > 0 || !parsed) return { error: validationError(failures) };
-    const startUtc = parsed.utc;
+    const startUtc = readStartTime(startTime, failures);
+    if (failures.length > 0 || startUtc === null) return { error: validationError(failures) };
 
     // Step 1b: rules that need the data.
     if (!customers.some((c) => c.id === customerId)) return { error: notFound('Customer', customerId) };

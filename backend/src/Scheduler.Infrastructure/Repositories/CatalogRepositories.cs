@@ -44,4 +44,7 @@ internal sealed class CustomerRepository(SchedulerDbContext db) : ICustomerRepos
 {
     public Task<bool> ExistsAsync(int customerId, CancellationToken cancellationToken) =>
         DbCall.RunAsync(() => db.Customers.AnyAsync(c => c.Id == customerId, cancellationToken));
+
+    public async Task<IReadOnlyList<Customer>> GetAllAsync(CancellationToken cancellationToken) =>
+        await DbCall.RunAsync(() => db.Customers.AsNoTracking().OrderBy(c => c.Id).ToListAsync(cancellationToken));
 }

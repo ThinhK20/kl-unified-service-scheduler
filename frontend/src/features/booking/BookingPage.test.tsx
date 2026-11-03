@@ -7,9 +7,11 @@ import { ApiError, type Appointment } from '../../api/types';
 import * as idempotency from '../../lib/idempotency';
 import {
   appointmentDto,
+  assignmentPreviewDto,
   availabilityDaysDto,
   availabilityDto,
   availabilityWith,
+  customers,
   DATE,
   dealerships,
   NOW,
@@ -17,8 +19,11 @@ import {
   vehicles,
 } from '../../test/fixtures';
 import { renderWithProviders } from '../../test/render';
+import { AppHeader } from '../../components/AppHeader';
 import { BookingPage } from './BookingPage';
 import { useBookingForm } from './useBookingForm';
+import { CustomerProvider } from '../customers/CustomerProvider';
+import { queryKeys } from '../../lib/queryKeys';
 
 vi.mock('../../api/appointmentsApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/appointmentsApi')>();
@@ -29,6 +34,7 @@ vi.mock('../../api/appointmentsApi', async (importOriginal) => {
     getCustomerVehicles: vi.fn(),
     getAvailability: vi.fn(),
     getAvailabilityDays: vi.fn(),
+    getAssignmentPreview: vi.fn(),
     bookAppointment: vi.fn(),
   };
 });
@@ -52,6 +58,7 @@ beforeEach(() => {
   vi.setSystemTime(new Date(NOW));
   mocked.getAvailabilityDays.mockImplementation(async ({ from, to }) => api.toAvailabilityDays(availabilityDaysDto(from, to)));
   mocked.getDealerships.mockResolvedValue(dealerships);
+  mocked.getAssignmentPreview.mockResolvedValue(api.toAssignmentPreview(assignmentPreviewDto()));
   mocked.getServiceTypes.mockImplementation(async (id) => serviceTypesByDealer[id] ?? []);
   mocked.getCustomerVehicles.mockResolvedValue(vehicles.map(api.toVehicle));
   mocked.getAvailability.mockResolvedValue(api.toAvailability(availabilityDto));
@@ -65,10 +72,11 @@ afterEach(() => {
 });
 
 type User = ReturnType<typeof userEvent.setup>;
+let lastRender: ReturnType<typeof renderWithProviders>;
 
-async function renderPage() {
+async function renderPage(storage: Storage | null = null) {
   const user = userEvent.setup();
-  renderWithProviders(<BookingPage />);
+  lastRender = renderWithProviders(<BookingPage />, { storage });
   await screen.findByLabelText('Vehicle');
   return user;
 }
@@ -150,6 +158,18 @@ describe('BookingPage', () => {
     expect(screen.getByText('Bay 1')).toBeInTheDocument();
     expect(screen.getByText('#42')).toBeInTheDocument();
     expect(screen.getByText('Confirmed')).toBeInTheDocument();
+  });
+
+  it('books for the customer chosen in "Booking as"', async () => {
+    const storage = { getItem: () => '3', setItem: () => undefined } as unknown as Storage;
+    const user = await renderPage(storage);
+    expect(mocked.getCustomerVehicles).toHaveBeenCalledWith(3, expect.anything());
+    await chooseAllButTime(user);
+    await user.click(timeButton('10:30'));
+    await user.click(screen.getByRole('button', { name: 'Book appointment' }));
+
+    await screen.findByRole('heading', { name: "You're booked" });
+    expect(mocked.bookAppointment).toHaveBeenCalledWith(expect.objectContaining({ customerId: 3, vehicleId: 1 }), expect.any(String));
   });
 
   it('disables the Book button while saving', async () => {
@@ -553,8 +573,11 @@ describe('BookingPage start times', () => {
 describe('useBookingForm after a successful booking', () => {
   it('does not clear the booked time when the refetch shows it as taken', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+    queryClient.setQueryData(queryKeys.customers, customers);
     const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <CustomerProvider storage={null}>{children}</CustomerProvider>
+      </QueryClientProvider>
     );
     let booked = false;
     mocked.bookAppointment.mockImplementation(async () => {
@@ -585,5 +608,224 @@ describe('useBookingForm after a successful booking', () => {
     await waitFor(() => expect(result.current.slots.find((s) => s.key === '2030-01-15T03:30:00.000Z')?.status).toBe('Booked'));
     expect(result.current.form.getValues('startTime')).toBe('2030-01-15T03:30:00.000Z');
     expect(result.current.availabilityNote).toBe('');
+  });
+});
+
+describe('BookingPage "Who will serve you"', () => {
+  const panel = () => screen.getByRole('region', { name: 'Who will serve you' });
+  const rows = (list: string) =>
+    within(within(panel()).getByRole('list', { name: list }))
+      .getAllByRole('listitem')
+      .map((li) => li.textContent);
+
+  it('stays hidden until an available time is chosen, then asks with dealership, service, time and car', async () => {
+    const user = await renderPage();
+    await chooseAllButTime(user);
+    expect(screen.queryByRole('region', { name: 'Who will serve you' })).not.toBeInTheDocument();
+    expect(mocked.getAssignmentPreview).not.toHaveBeenCalled();
+
+    await user.click(timeButton('10:30'));
+
+    expect(await within(await screen.findByRole('region', { name: 'Who will serve you' })).findByText('Expected pick — confirmed when you book.')).toBeInTheDocument();
+    expect(mocked.getAssignmentPreview).toHaveBeenLastCalledWith(
+      { dealershipId: 1, serviceTypeId: 1, startTime: '2030-01-15T10:30:00+07:00', vehicleId: 1 },
+      expect.anything(),
+    );
+  });
+
+  it('lists every technician and bay with its state, highlights the pick and adds it to the summary', async () => {
+    const user = await renderPage();
+    await chooseAllButTime(user);
+    await user.click(timeButton('10:30'));
+    await within(await screen.findByRole('region', { name: 'Who will serve you' })).findByRole('list', { name: 'Technician' });
+
+    expect(rows('Technician')).toEqual([
+      'Minh: Will serve you',
+      'Lan: Free',
+      'Nam: Busy at this time',
+      'Thao: Off shift at 10:30',
+      'Vy: Not qualified',
+      'Tuan: Inactive',
+    ]);
+    expect(rows('Service bay')).toEqual([
+      'Bay 1 · Standard: Will serve you',
+      'Bay 5 · Standard: Busy at this time',
+      'Bay 2 · Lift: Wrong bay type',
+      'Bay 4 · Lift: Inactive',
+    ]);
+    const technicianList = within(panel()).getByRole('list', { name: 'Technician' });
+    expect(within(technicianList).getByText('Minh').closest('li')).toHaveClass('assign__row--pick');
+    expect(within(technicianList).getByText('Tuan').closest('li')).toHaveClass('assign__row--inactive');
+    expect(summaryValue('Technician')).toBe('Minh (expected)');
+    expect(summaryValue('Bay')).toBe('Bay 1 (expected)');
+  });
+
+  it('says why when the time cannot be assigned, without a pick in the summary', async () => {
+    mocked.getAssignmentPreview.mockResolvedValue(
+      api.toAssignmentPreview(
+        assignmentPreviewDto({
+          status: 'NoAvailability',
+          technician: null,
+          serviceBay: null,
+          technicians: [{ id: 3, name: 'Minh', state: 'Busy' }],
+          serviceBays: [{ id: 1, name: 'Bay 1', bayType: 'Standard', state: 'Busy' }],
+        }),
+      ),
+    );
+    const user = await renderPage();
+    await chooseAllButTime(user);
+    await user.click(timeButton('10:30'));
+
+    expect(await screen.findByText('Nobody is free for the whole time any more. Please pick another time.')).toBeInTheDocument();
+    expect(rows('Technician')).toEqual(['Minh: Busy at this time']);
+    expect(within(panel()).queryByText('Will serve you')).not.toBeInTheDocument();
+    expect(within(screen.getByLabelText('Booking summary')).queryByText('Technician')).not.toBeInTheDocument();
+  });
+
+  it('shows loading, then an error with Try again', async () => {
+    const pending = deferred<Awaited<ReturnType<typeof api.getAssignmentPreview>>>();
+    mocked.getAssignmentPreview.mockReturnValueOnce(pending.promise);
+    const user = await renderPage();
+    await chooseAllButTime(user);
+    await user.click(timeButton('10:30'));
+
+    expect(await within(panel()).findByText('Checking who is free…')).toBeInTheDocument();
+    mocked.getAssignmentPreview.mockRejectedValueOnce(ApiError.network(new TypeError('Failed to fetch')));
+    await user.click(timeButton('11:00'));
+    const alert = await within(panel()).findByRole('alert');
+    expect(within(alert).getByText('We could not check who will serve you')).toBeInTheDocument();
+
+    const retry = deferred<Awaited<ReturnType<typeof api.getAssignmentPreview>>>();
+    mocked.getAssignmentPreview.mockReturnValueOnce(retry.promise);
+    await user.click(within(alert).getByRole('button', { name: 'Try again' }));
+    expect(await within(panel()).findByText('Checking who is free…')).toBeInTheDocument();
+    expect(within(panel()).queryByRole('alert')).not.toBeInTheDocument();
+    retry.resolve(api.toAssignmentPreview(assignmentPreviewDto()));
+    expect(await within(panel()).findByText('Expected pick — confirmed when you book.')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['409 NO_AVAILABILITY', new ApiError({ status: 409, code: 'NO_AVAILABILITY', title: 'No availability' })],
+    ['409 IDEMPOTENCY_CONFLICT', new ApiError({ status: 409, code: 'IDEMPOTENCY_CONFLICT', title: 'Conflict' })],
+    ['201', null],
+  ] as const)('invalidates the expected pick with the availability after %s', async (_name, error) => {
+    if (error) mocked.bookAppointment.mockRejectedValueOnce(error);
+    const user = await renderPage();
+    await chooseAllButTime(user);
+    await user.click(timeButton('10:30'));
+    await within(await screen.findByRole('region', { name: 'Who will serve you' })).findByRole('list', { name: 'Technician' });
+    const invalidate = vi.spyOn(lastRender.queryClient, 'invalidateQueries');
+
+    await user.click(screen.getByRole('button', { name: 'Book appointment' }));
+
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['assignment-preview'] }));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['availability'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['availability-days'] });
+    if (error) await waitFor(() => expect(mocked.getAssignmentPreview).toHaveBeenCalledTimes(2));
+    else expect(await screen.findByRole('heading', { name: "You're booked" })).toBeInTheDocument();
+  });
+
+  it('announces the result politely, with the pick for screen readers', async () => {
+    const user = await renderPage();
+    await chooseAllButTime(user);
+    await user.click(timeButton('10:30'));
+    const status = await within(await screen.findByRole('region', { name: 'Who will serve you' })).findByText('Minh and Bay 1.');
+    expect(status.closest('[role="status"]')).toHaveTextContent('Expected pick — confirmed when you book.Minh and Bay 1.');
+  });
+
+  it('asks again when the car or the time changes', async () => {
+    const user = await renderPage();
+    await chooseAllButTime(user);
+    await user.click(timeButton('10:30'));
+    await within(await screen.findByRole('region', { name: 'Who will serve you' })).findByRole('list', { name: 'Technician' });
+
+    await user.click(timeButton('11:00'));
+    await waitFor(() =>
+      expect(mocked.getAssignmentPreview).toHaveBeenLastCalledWith(
+        expect.objectContaining({ startTime: '2030-01-15T11:00:00+07:00', vehicleId: 1 }),
+        expect.anything(),
+      ),
+    );
+    await user.selectOptions(screen.getByLabelText('Vehicle'), '2');
+    await waitFor(() =>
+      expect(mocked.getAssignmentPreview).toHaveBeenLastCalledWith(
+        expect.objectContaining({ startTime: '2030-01-15T11:00:00+07:00', vehicleId: 2 }),
+        expect.anything(),
+      ),
+    );
+    expect(await within(panel()).findByRole('list', { name: 'Technician' })).toBeInTheDocument();
+  });
+
+  it('after a 409 hides the old pick and drops the expected rows from the summary', async () => {
+    mocked.bookAppointment.mockRejectedValueOnce(new ApiError({ status: 409, code: 'IDEMPOTENCY_CONFLICT', title: 'Conflict' }));
+    const user = await renderPage();
+    await chooseAllButTime(user);
+    await user.click(timeButton('10:30'));
+    await within(await screen.findByRole('region', { name: 'Who will serve you' })).findByRole('list', { name: 'Technician' });
+    expect(summaryValue('Technician')).toBe('Minh (expected)');
+
+    await user.click(screen.getByRole('button', { name: 'Book appointment' }));
+
+    await screen.findByText('This booking request was already used');
+    expect(screen.queryByRole('region', { name: 'Who will serve you' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Will serve you')).not.toBeInTheDocument();
+    const summary = screen.getByLabelText('Booking summary');
+    expect(within(summary).queryByText('Technician')).not.toBeInTheDocument();
+    expect(within(summary).queryByText('Bay')).not.toBeInTheDocument();
+
+    // Picking the time again clears the error and asks again.
+    await user.click(timeButton('11:00'));
+    expect(await within(await screen.findByRole('region', { name: 'Who will serve you' })).findByRole('list', { name: 'Technician' })).toBeInTheDocument();
+  });
+
+  it('refreshes the times and days when the preview says the time is no longer bookable', async () => {
+    let refreshed = false;
+    mocked.getAssignmentPreview.mockImplementation(async () => {
+      refreshed = true;
+      return api.toAssignmentPreview(
+        assignmentPreviewDto({ status: 'VehicleBooked', technician: null, serviceBay: null }),
+      );
+    });
+    const user = await renderPage();
+    await chooseAllButTime(user);
+    mocked.getAvailability.mockImplementation(async () =>
+      api.toAvailability(refreshed ? availabilityWith(['Available', 'VehicleBooked', 'Available']) : availabilityDto),
+    );
+    await user.click(timeButton('10:30'));
+
+    await waitFor(() => expect(mocked.getAvailabilityDays).toHaveBeenCalledTimes(2));
+    expect(
+      await screen.findByText('10:30 is no longer available: this car is already booked then. Please pick another time.'),
+    ).toBeInTheDocument();
+    expect(within(timesGroup()).getByRole('button', { name: '10:30, your car is booked' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByRole('region', { name: 'Who will serve you' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Booking as while a booking is being saved', () => {
+  it('locks the customer switcher with a hint, so the confirmation is not lost', async () => {
+    const pending = deferred<Appointment>();
+    mocked.bookAppointment.mockReturnValue(pending.promise);
+    const user = userEvent.setup();
+    renderWithProviders(
+      <>
+        <AppHeader />
+        <BookingPage />
+      </>,
+    );
+    await screen.findByLabelText('Vehicle');
+    const switcher = screen.getByRole('combobox', { name: 'Booking as' });
+    expect(switcher).toBeEnabled();
+    await chooseAllButTime(user);
+    await user.click(timeButton('10:30'));
+    await user.click(screen.getByRole('button', { name: 'Book appointment' }));
+
+    await waitFor(() => expect(switcher).toBeDisabled());
+    expect(switcher).toHaveAccessibleDescription('Saving your booking…');
+
+    pending.resolve(api.toAppointment(appointmentDto()));
+    expect(await screen.findByRole('heading', { name: "You're booked" })).toBeInTheDocument();
+    await waitFor(() => expect(switcher).toBeEnabled());
+    expect(switcher).not.toHaveAccessibleDescription();
   });
 });

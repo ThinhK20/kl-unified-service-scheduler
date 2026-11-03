@@ -1,8 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import type { BookAppointmentRequest, DayStatus, StartTimeStatus } from '../../api/types';
-import { DEMO_CUSTOMER_ID } from '../../config';
+import type { AssignmentPreview, BookAppointmentRequest, DayStatus, StartTimeStatus } from '../../api/types';
 import {
   addMinutes,
   formatIsoDate,
@@ -14,8 +14,11 @@ import {
   toZonedIsoString,
 } from '../../lib/dateTime';
 import { formatDuration } from '../../lib/formatters';
+import { queryKeys } from '../../lib/queryKeys';
 import { describeBookingError } from './bookingErrors';
 import { createBookingSchema, emptyBookingForm, type BookingFormValues } from './bookingSchema';
+import { useCustomer } from '../customers/customerContext';
+import { useAssignmentPreview } from './useAssignmentPreview';
 import { useAvailability, useAvailabilityDays } from './useAvailability';
 import { useBookAppointment } from './useBookAppointment';
 import { useDealerships, useServiceTypes, useVehicles } from './useCatalog';
@@ -32,6 +35,8 @@ export interface TimeOption extends SlotOption {
 
 export type SlotsState = 'idle' | 'loading' | 'error' | 'empty' | 'ready';
 export type DaysState = 'idle' | 'loading' | 'error' | 'ready';
+/** "Who will serve you": hidden until an Available time is chosen. */
+export type AssignmentState = 'hidden' | 'loading' | 'error' | 'ready';
 
 const toId = (value: string): number | null => (value === '' ? null : Number(value));
 
@@ -54,7 +59,9 @@ function describeStaleTime(time: string, status: StartTimeStatus | null): string
  * the booking mutation and the text the summary shows. Components only render its output.
  */
 export function useBookingForm() {
-  const vehiclesQuery = useVehicles(DEMO_CUSTOMER_ID);
+  const customer = useCustomer();
+  const customerId = customer.customerId;
+  const vehiclesQuery = useVehicles(customerId);
   const dealershipsQuery = useDealerships();
 
   // The schema needs the dealership's time zone to know what "today" is.
@@ -197,6 +204,39 @@ export function useBookingForm() {
     }
   }, [staleDay, staleTime, setValue]);
 
+  // --- who will serve you ----------------------------------------------------------------
+  // Hidden while a booking error is shown for this time: the pick may be what just failed.
+  const assignmentEnabled =
+    !isConfirmed && booking.error === null && selectedTimeStatus === 'Available' && timeZoneId !== null;
+  const assignmentQuery = useAssignmentPreview({
+    dealershipId,
+    serviceTypeId,
+    startTime: startKey && timeZoneId ? toZonedIsoString(new Date(startKey), timeZoneId) : '',
+    vehicleId,
+    enabled: assignmentEnabled,
+  });
+  let assignmentState: AssignmentState = 'hidden';
+  if (assignmentEnabled) {
+    // Fetching (first load, a refetch after a booking invalidated it, Try again) never shows an old pick.
+    if (assignmentQuery.isFetching) assignmentState = 'loading';
+    else if (assignmentQuery.isError) assignmentState = 'error';
+    else if (assignmentQuery.data) assignmentState = 'ready';
+    else assignmentState = 'loading';
+  }
+  const assignment: AssignmentPreview | null = assignmentState === 'ready' ? (assignmentQuery.data ?? null) : null;
+  const expected = assignment?.status === 'Assignable' ? assignment : null;
+
+  // The preview says the time cannot be booked while the list still offers it: refresh the list (and the days),
+  // which then shows the time as taken and clears it with a note.
+  const queryClient = useQueryClient();
+  const previewDisagrees = assignment !== null && assignment.status !== 'Assignable';
+  const previewUpdatedAt = assignmentQuery.dataUpdatedAt;
+  useEffect(() => {
+    if (!previewDisagrees) return;
+    void queryClient.invalidateQueries({ queryKey: queryKeys.availabilityAll });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.availabilityDaysAll });
+  }, [previewDisagrees, previewUpdatedAt, queryClient]);
+
   // --- summary -------------------------------------------------------------------------
   const start = startKey ? new Date(startKey) : null;
   const end =
@@ -211,14 +251,16 @@ export function useBookingForm() {
     service: serviceType ? `${serviceType.name} · ${formatDuration(serviceType.durationMinutes)}` : null,
     date: date ? formatIsoDate(date) : null,
     time: start && end && timeZoneId ? formatTimeRange(start, end, timeZoneId) : null,
+    technician: expected?.technician ? `${expected.technician.name} (expected)` : null,
+    bay: expected?.serviceBay ? `${expected.serviceBay.name} (expected)` : null,
   };
 
   // --- submit / retry ------------------------------------------------------------------
   const onSubmit = handleSubmit((v) => {
     const chosenDealership = dealershipsQuery.data?.find((d) => String(d.id) === v.dealershipId);
-    if (!chosenDealership) return;
+    if (!chosenDealership || customerId === null) return;
     const request: BookAppointmentRequest = {
-      customerId: DEMO_CUSTOMER_ID,
+      customerId,
       vehicleId: Number(v.vehicleId),
       dealershipId: Number(v.dealershipId),
       serviceTypeId: Number(v.serviceTypeId),
@@ -246,6 +288,8 @@ export function useBookingForm() {
     minDate,
     vehiclesQuery,
     dealershipsQuery,
+    customerStatus: customer.status,
+    retryCustomers: customer.retry,
     serviceTypesQuery,
     vehicles: vehiclesQuery.data ?? [],
     dealerships: dealershipsQuery.data ?? [],
@@ -264,6 +308,9 @@ export function useBookingForm() {
     slots,
     slotsState,
     availabilityNote: note.text,
+    assignmentState,
+    assignment,
+    refetchAssignment: () => void assignmentQuery.refetch(),
     refetchSlots: () => void availabilityQuery.refetch(),
     selectedSlotKey: startKey,
     selectTime,

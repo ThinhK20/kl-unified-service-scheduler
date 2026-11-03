@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { appointmentDto, availabilityDaysDto, availabilityDto } from '../test/fixtures';
-import { bookAppointment, getAvailability, getAvailabilityDays, toAvailability } from './appointmentsApi';
+import { appointmentDto, assignmentPreviewDto, availabilityDaysDto, availabilityDto, customers } from '../test/fixtures';
+import {
+  bookAppointment,
+  getAssignmentPreview,
+  getAvailability,
+  getAvailabilityDays,
+  getCustomers,
+  toAssignmentPreview,
+  toAvailability,
+} from './appointmentsApi';
 import { ApiError } from './types';
 
 function jsonResponse(status: number, body: unknown, contentType = 'application/json') {
@@ -143,5 +151,36 @@ describe('appointmentsApi + apiClient', () => {
       { date: '2030-01-10', availableCount: 3, status: 'Available' },
       { date: '2030-01-11', availableCount: 3, status: 'Available' },
     ]);
+  });
+
+  it('gets the customers', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, customers));
+    vi.stubGlobal('fetch', fetchMock);
+    expect((await getCustomers()).map((c) => c.name)).toEqual(['An Nguyen', 'Binh Tran', 'Chi Le']);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://localhost:5080/api/customers');
+  });
+
+  it('asks for the assignment preview with the offset start time (encoded) and the car', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, assignmentPreviewDto()));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const preview = await getAssignmentPreview({ dealershipId: 1, serviceTypeId: 1, startTime: '2030-01-15T10:30:00+07:00', vehicleId: 2 });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      'http://localhost:5080/api/dealerships/1/assignment-preview?serviceTypeId=1&startTime=2030-01-15T10%3A30%3A00%2B07%3A00&vehicleId=2',
+    );
+    expect(preview.start).toEqual(new Date('2030-01-15T03:30:00Z'));
+    expect(preview.technician).toEqual({ id: 3, name: 'Minh' });
+  });
+
+  it('never promises a pick it does not have, and treats unknown states as busy', () => {
+    const noPick = toAssignmentPreview(assignmentPreviewDto({ technician: null }));
+    expect(noPick).toMatchObject({ status: 'NoAvailability', technician: null, serviceBay: null });
+    const odd = toAssignmentPreview(
+      assignmentPreviewDto({ status: 'Held' as never, technicians: [{ id: 1, name: 'Nam', state: 'OnBreak' as never }] }),
+    );
+    expect(odd.status).toBe('NoAvailability');
+    expect(odd.technician).toBeNull();
+    expect(odd.technicians[0]?.state).toBe('Busy');
   });
 });

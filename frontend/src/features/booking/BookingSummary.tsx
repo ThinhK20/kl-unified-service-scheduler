@@ -4,6 +4,9 @@ export interface BookingSummaryProps {
   service: string | null;
   date: string | null;
   time: string | null;
+  /** Expected technician / bay (from the assignment preview); the rows show only when known. */
+  technician?: string | null;
+  bay?: string | null;
 }
 
 const EMPTY = 'Not chosen yet';
@@ -16,6 +19,8 @@ export function BookingSummary(props: BookingSummaryProps) {
     ['Date', props.date],
     ['Time', props.time],
   ];
+  if (props.technician) rows.push(['Technician', props.technician]);
+  if (props.bay) rows.push(['Bay', props.bay]);
   return (
     <dl className="summary" aria-label="Booking summary">
       {rows.map(([label, value]) => (

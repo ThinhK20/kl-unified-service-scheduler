@@ -134,9 +134,23 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                         new
                         {
                             Id = 1,
-                            Email = "demo@example.com",
-                            Name = "Demo Customer",
-                            Phone = "+84 900 000 000"
+                            Email = "an.nguyen@example.com",
+                            Name = "An Nguyen",
+                            Phone = "+84 900 000 001"
+                        },
+                        new
+                        {
+                            Id = 2,
+                            Email = "binh.tran@example.com",
+                            Name = "Binh Tran",
+                            Phone = "+84 900 000 002"
+                        },
+                        new
+                        {
+                            Id = 3,
+                            Email = "chi.le@example.com",
+                            Name = "Chi Le",
+                            Phone = "+84 900 000 003"
                         });
                 });
 
@@ -638,6 +652,33 @@ namespace Scheduler.Infrastructure.Persistence.Migrations
                             Model = "CR-V",
                             Vin = "7FARW2H58PE000002",
                             Year = 2023
+                        },
+                        new
+                        {
+                            Id = 3,
+                            CustomerId = 2,
+                            Make = "VinFast",
+                            Model = "VF 8",
+                            Vin = "RLLV8EAA5RV000003",
+                            Year = 2024
+                        },
+                        new
+                        {
+                            Id = 4,
+                            CustomerId = 3,
+                            Make = "Mazda",
+                            Model = "CX-5",
+                            Vin = "JM3KFBCM1N0000004",
+                            Year = 2022
+                        },
+                        new
+                        {
+                            Id = 5,
+                            CustomerId = 3,
+                            Make = "Kia",
+                            Model = "Morning",
+                            Vin = "KNABE511AL0000005",
+                            Year = 2020
                         });
                 });
 

@@ -1,8 +1,15 @@
 import { BookingConfirmation } from './BookingConfirmation';
 import { BookingForm } from './BookingForm';
+import { useCustomer } from '../customers/customerContext';
 import { useBookingForm } from './useBookingForm';
 
+/** A new key per customer: switching customer starts a fresh form (and forgets the last booking). */
 export function BookingPage() {
+  const { customerId } = useCustomer();
+  return <BookingPageContent key={customerId ?? 'none'} />;
+}
+
+function BookingPageContent() {
   const model = useBookingForm();
 
   return (

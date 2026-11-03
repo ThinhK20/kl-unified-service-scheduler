@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createSeedState, MockSchedulerBackend, parseWithOffset, type MockState } from './mockBackend';
+import { compareOrdinalIgnoreCase, createSeedState, MockSchedulerBackend, parseWithOffset, type MockState } from './mockBackend';
+import { bays, technicians } from './seed';
 
 const DAY = '2030-01-15';
 /** Local Ho Chi Minh City time on DAY -> request startTime with offset. */
@@ -255,6 +256,194 @@ describe('availability v2: days (contract section 2)', () => {
   });
 });
 
+type Person = { id: number; name: string; state: string; bayType?: string };
+type Preview = {
+  status: string;
+  technician: { id: number; name: string } | null;
+  serviceBay: { id: number; name: string; bayType: string } | null;
+  technicians: Person[];
+  serviceBays: Person[];
+} & Record<string, unknown>;
+
+describe('assignment preview (customers contract section 3)', () => {
+  const previewUrl = (serviceTypeId: number | string, startTime: string, extra = '', dealershipId = 1) =>
+    `/api/dealerships/${dealershipId}/assignment-preview?serviceTypeId=${serviceTypeId}&startTime=${encodeURIComponent(startTime)}${extra}`;
+  const states = (rows: Person[]) => rows.map((r) => `${r.name}:${r.state}`);
+
+  it('EV battery check 10:00 on an empty day: Lan and Bay 3 will serve; every technician and bay with a state, in order', () => {
+    const { call } = setup();
+    const response = call('GET', previewUrl(4, at('10:00')));
+    expect(response.status).toBe(200);
+    const body = response.body as unknown as Preview;
+    expect(body).toMatchObject({
+      dealershipId: 1,
+      serviceTypeId: 4,
+      timeZoneId: 'Asia/Ho_Chi_Minh',
+      startUtc: utc('10:00'),
+      endUtc: utc('11:00'),
+      status: 'Assignable',
+      technician: { id: 2, name: 'Lan' },
+      serviceBay: { id: 3, name: 'Bay 3', bayType: 'EV' },
+    });
+    expect(states(body.technicians)).toEqual(['Lan:WillServe', 'Minh:NotQualified', 'Nam:NotQualified', 'Tuan:Inactive']);
+    expect(states(body.serviceBays)).toEqual(['Bay 3:WillServe', 'Bay 1:WrongType', 'Bay 2:WrongType', 'Bay 4:Inactive']);
+    expect(body.serviceBays[0]).toEqual({ id: 3, name: 'Bay 3', bayType: 'EV', state: 'WillServe' });
+  });
+
+  it('follows the scarcity strategy: an oil change at 10:00 previews Nam (Minh is off shift), at 13:00 Minh', () => {
+    const { call } = setup();
+    const morning = call('GET', previewUrl(1, at('10:00'))).body as unknown as Preview;
+    expect(morning.technician).toEqual({ id: 1, name: 'Nam' });
+    expect(states(morning.technicians)).toEqual(['Nam:WillServe', 'Lan:Free', 'Minh:OffShift', 'Tuan:Inactive']);
+    expect(states(morning.serviceBays)).toEqual(['Bay 1:WillServe', 'Bay 2:WrongType', 'Bay 3:WrongType', 'Bay 4:Inactive']);
+    expect((call('GET', previewUrl(1, at('13:00'))).body as unknown as Preview).technician?.name).toBe('Minh');
+  });
+
+  it('shows Busy, then NoAvailability without a pick; VehicleBooked and Past keep the other states', () => {
+    const { call, book, setNow } = setup();
+    expect(book(1, 4, at('10:00')).status).toBe(201); // Toyota: Lan + Bay 3, 10:00-11:00
+    const taken = call('GET', previewUrl(4, at('10:30'), '&vehicleId=2')).body as unknown as Preview;
+    expect(taken).toMatchObject({ status: 'NoAvailability', technician: null, serviceBay: null });
+    expect(states(taken.technicians)).toEqual(['Lan:Busy', 'Minh:NotQualified', 'Nam:NotQualified', 'Tuan:Inactive']);
+    expect(states(taken.serviceBays)[0]).toBe('Bay 3:Busy');
+    expect(taken.technicians.some((t) => t.state === 'WillServe')).toBe(false);
+
+    const car = call('GET', previewUrl(1, at('10:30'), '&vehicleId=1')).body as unknown as Preview;
+    expect(car).toMatchObject({ status: 'VehicleBooked', technician: null, serviceBay: null });
+    expect(states(car.technicians)).toEqual(['Nam:Free', 'Lan:Busy', 'Minh:OffShift', 'Tuan:Inactive']);
+
+    setNow(utc('10:30'));
+    const past = call('GET', previewUrl(1, at('10:30'), '&vehicleId=1')).body as unknown as Preview;
+    expect(past).toMatchObject({ status: 'Past', technician: null });
+    expect(states(past.technicians)).toEqual(['Nam:Free', 'Lan:Busy', 'Minh:OffShift', 'Tuan:Inactive']);
+  });
+
+  it('invariant: an Assignable preview books right away with 201 and exactly that technician and bay', () => {
+    const { backend, call, book } = setup();
+    book(1, 1, at('10:00'));
+    book(2, 2, at('13:00'));
+    book(1, 4, at('15:00'));
+    const snapshot = backend.snapshot();
+    let checked = 0;
+    for (const service of [1, 2, 3, 4]) {
+      for (const vehicleId of [1, 2, 4]) {
+        for (let minutes = 8 * 60; minutes <= 16 * 60; minutes += 45) {
+          const hhmm = `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+          const preview = call('GET', previewUrl(service, at(hhmm), `&vehicleId=${vehicleId}`));
+          if (preview.status !== 200) continue; // outside opening hours for the longer services
+          const body = preview.body as unknown as Preview;
+          const fresh = new MockSchedulerBackend({ state: snapshot, now: () => Date.parse('2030-01-01T00:00:00Z') });
+          const customerId = vehicleId === 4 ? 3 : 1;
+          const booked = fresh.handle({
+            method: 'POST',
+            url: '/api/appointments',
+            headers: { 'idempotency-key': `k-${service}-${vehicleId}-${hhmm}` },
+            body: JSON.stringify({ customerId, vehicleId, dealershipId: 1, serviceTypeId: service, startTime: at(hhmm) }),
+          });
+          const result = booked.body as { technician?: { id: number }; serviceBay?: { id: number }; code?: string };
+          if (body.status === 'Assignable') {
+            expect([service, vehicleId, hhmm, booked.status, result.technician?.id, result.serviceBay?.id]).toEqual([
+              service, vehicleId, hhmm, 201, body.technician?.id, body.serviceBay?.id,
+            ]);
+            checked++;
+          } else {
+            expect(booked.status).toBe(409);
+            expect(result.code).toBe(body.status === 'VehicleBooked' ? 'VEHICLE_ALREADY_BOOKED' : 'NO_AVAILABILITY');
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(60);
+  });
+
+  it('validates like the booking request and the availability endpoints', () => {
+    const { call } = setup();
+    const err = (url: string) => call('GET', url).body;
+    expect(err('/api/dealerships/1/assignment-preview?serviceTypeId=4')).toMatchObject({ status: 400, detail: 'startTime is required.' });
+    expect(err(previewUrl(4, '2030-01-15T10:00:00')).detail).toMatch(/with an offset, for example 2026-11-10T10:30:00\+07:00\.$/);
+    expect(err(previewUrl(4, at('10:10'))).detail).toBe('startTime must be on the 15-minute grid (:00, :15, :30 or :45, with zero seconds).');
+    expect(err(previewUrl(4, '1999-01-15T10:00:00+07:00')).detail).toBe('startTime must be between the years 2000 and 9998.');
+    expect(err(previewUrl(0, at('10:00'))).detail).toBe('serviceTypeId is required.');
+    expect(err(previewUrl('x', at('10:00'))).errors).toEqual({ serviceTypeId: ['The value is not valid.'] });
+    for (const bad of ['', '0', '-3', 'abc', '2147483648']) {
+      expect(err(previewUrl(4, at('10:00'), `&vehicleId=${bad}`))).toMatchObject({ status: 400, detail: 'vehicleId must be a positive number.' });
+    }
+    const many = err('/api/dealerships/1/assignment-preview?vehicleId=0');
+    expect(Object.keys(many.errors as object)).toEqual(['serviceTypeId', 'startTime', 'vehicleId']);
+    // A UTC "Z" time is an offset too.
+    expect(call('GET', previewUrl(4, utc('10:00'))).status).toBe(200);
+  });
+
+  it('404 in the order dealership, service type, vehicle; then 422 offer rules and opening hours', () => {
+    const { call } = setup();
+    const err = (url: string) => call('GET', url).body;
+    expect(err(previewUrl(99, at('10:00'), '&vehicleId=99', 9)).detail).toBe('Dealership 9 was not found.');
+    expect(err(previewUrl(99, at('10:00'), '&vehicleId=99')).detail).toBe('Service type 99 was not found.');
+    expect(err(previewUrl(4, at('10:00'), '&vehicleId=99'))).toMatchObject({ status: 404, detail: 'Vehicle 99 was not found.' });
+    expect(err(previewUrl(5, at('10:00')))).toMatchObject({ status: 422, detail: 'The service type is not offered at this dealership.' });
+    expect(err(previewUrl(4, at('16:15')))).toMatchObject({
+      status: 422,
+      code: 'BOOKING_RULE_VIOLATION',
+      detail: 'The appointment must be inside the dealership opening hours.',
+    });
+    expect(call('GET', previewUrl(4, at('16:00'))).status).toBe(200);
+    // A past time is not an error, even outside opening hours (Past is checked first).
+    expect((call('GET', previewUrl(4, at('10:00', '2029-12-01'))).body as unknown as Preview).status).toBe('Past');
+    const pastAfterHours = call('GET', previewUrl(4, at('16:30', '2029-12-01')));
+    expect(pastAfterHours.status).toBe(200);
+    expect((pastAfterHours.body as unknown as Preview).status).toBe('Past');
+    expect(call('GET', previewUrl(4, at('07:00', '2029-12-01'))).status).toBe(200);
+  });
+
+  /** Runs `body` with seed rows switched off, then restores them (the seed arrays are module state). */
+  function withInactive(rows: { isActive: boolean }[], body: () => void) {
+    const before = rows.map((r) => r.isActive);
+    rows.forEach((r) => (r.isActive = false));
+    try {
+      body();
+    } finally {
+      rows.forEach((r, i) => (r.isActive = before[i]!));
+    }
+  }
+
+  it('NoAvailability when no bay of the required type is active, while qualified technicians are Free and Busy', () => {
+    withInactive([bays.find((b) => b.name === 'Bay 2')!], () => {
+      const { call, book } = setup();
+      expect(assigned(book(1, 1, at('13:00')).body).technician).toBe('Minh'); // Minh busy 13:00-14:00
+      const brakes = call('GET', previewUrl(2, at('13:00'))).body as unknown as Preview;
+      expect(brakes).toMatchObject({ status: 'NoAvailability', technician: null, serviceBay: null });
+      expect(states(brakes.technicians)).toEqual(['Nam:Free', 'Minh:Busy', 'Lan:NotQualified', 'Tuan:Inactive']);
+      expect(states(brakes.serviceBays)).toEqual(['Bay 1:WrongType', 'Bay 3:WrongType', 'Bay 2:Inactive', 'Bay 4:Inactive']);
+      // Booking agrees.
+      expect(book(2, 2, at('13:00')).body.code).toBe('NO_AVAILABILITY');
+    });
+  });
+
+  it('NoAvailability when no qualified technician is active, while the right bays are Free and Busy', () => {
+    withInactive([technicians.find((t) => t.name === 'Nam')!, technicians.find((t) => t.name === 'Minh')!], () => {
+      const { call, book } = setup();
+      // Before switching Nam and Minh off, nobody else could have taken Bay 2; use tyres (Lan) to make it busy.
+      expect(assigned(book(1, 3, at('10:00')).body)).toEqual({ technician: 'Lan', bay: 'Bay 2' });
+      const brakes = call('GET', previewUrl(2, at('10:00'))).body as unknown as Preview;
+      expect(brakes).toMatchObject({ status: 'NoAvailability', technician: null });
+      expect(states(brakes.technicians)).toEqual(['Lan:NotQualified', 'Minh:Inactive', 'Nam:Inactive', 'Tuan:Inactive']);
+      expect(states(brakes.serviceBays)).toEqual(['Bay 2:Busy', 'Bay 1:WrongType', 'Bay 3:WrongType', 'Bay 4:Inactive']);
+      const later = call('GET', previewUrl(2, at('13:00'))).body as unknown as Preview;
+      expect(states(later.serviceBays)[0]).toBe('Bay 2:Free');
+      expect(later.status).toBe('NoAvailability');
+    });
+  });
+
+  it('sorts names like OrdinalIgnoreCase', () => {
+    expect(['bay 10', 'Bay 2', 'BAY 1', 'Bay 1b'].sort(compareOrdinalIgnoreCase)).toEqual(['BAY 1', 'bay 10', 'Bay 1b', 'Bay 2']);
+    expect(compareOrdinalIgnoreCase('lan', 'LAN')).toBe(0);
+    // Upper case, not lower case: "_" (95) sorts after "A" (65), unlike a lower-case comparison with "a" (97).
+    expect(compareOrdinalIgnoreCase('_a', 'a')).toBeGreaterThan(0);
+    // Length-preserving: "ß" is not expanded to "SS".
+    expect(compareOrdinalIgnoreCase('straße', 'STRASSE')).not.toBe(0);
+  });
+});
+
 describe('booking and allocation (ScarcityAwareStrategy)', () => {
   it('oil change 10:00 goes to Nam, then EV battery check 10:00 goes to Lan', () => {
     const { book } = setup();
@@ -417,7 +606,14 @@ describe('catalog, routes and seed', () => {
     expect((call('GET', '/api/service-types?dealershipId=1').body as unknown[]).length).toBe(4);
     expect((call('GET', '/api/service-types').body as unknown[]).length).toBe(5);
     expect((call('GET', '/api/customers/1/vehicles').body as { vin: string }[])[0]!.vin).toBe('JTDBT923X71000001');
-    expect(call('GET', '/api/customers/2/vehicles').body).toMatchObject({ status: 404, detail: 'Customer 2 was not found.' });
+    expect((call('GET', '/api/customers/2/vehicles').body as { make: string }[]).map((v) => v.make)).toEqual(['VinFast']);
+    expect((call('GET', '/api/customers/3/vehicles').body as { id: number }[]).map((v) => v.id)).toEqual([4, 5]);
+    expect(call('GET', '/api/customers/7/vehicles').body).toMatchObject({ status: 404, detail: 'Customer 7 was not found.' });
+    expect(call('GET', '/api/customers').body).toEqual([
+      { id: 1, name: 'An Nguyen', email: 'an.nguyen@example.com', phone: '+84 900 000 001' },
+      { id: 2, name: 'Binh Tran', email: 'binh.tran@example.com', phone: '+84 900 000 002' },
+      { id: 3, name: 'Chi Le', email: 'chi.le@example.com', phone: '+84 900 000 003' },
+    ]);
   });
 
   it('answers unknown routes and wrong methods with ProblemDetails', () => {

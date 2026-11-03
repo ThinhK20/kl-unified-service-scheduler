@@ -4,6 +4,7 @@ import { Calendar } from '../../components/Calendar';
 import { Select } from '../../components/Select';
 import { Spinner } from '../../components/Spinner';
 import { formatDealershipOption, formatServiceOption, formatVehicleOption } from '../../lib/formatters';
+import { AssignmentPanel } from './AssignmentPanel';
 import { BookingErrorBox } from './BookingErrorBox';
 import { BookingSummary } from './BookingSummary';
 import { TimeSlotPicker } from './TimeSlotPicker';
@@ -13,17 +14,19 @@ export function BookingForm({ model }: { model: BookingFormModel }) {
   const { form, errors } = model;
   const { register } = form;
 
-  if (model.vehiclesQuery.isPending || model.dealershipsQuery.isPending) {
+  const failed = model.customerStatus === 'error' || model.vehiclesQuery.isError || model.dealershipsQuery.isError;
+  if (!failed && (model.vehiclesQuery.isPending || model.dealershipsQuery.isPending)) {
     return <Spinner label="Loading booking options…" />;
   }
-  if (model.vehiclesQuery.isError || model.dealershipsQuery.isError) {
+  if (failed) {
     return (
       <Alert title="We could not load the booking options">
         <p className="alert__text">Please check that the service is running and try again.</p>
         <Button
           variant="secondary"
           onClick={() => {
-            void model.vehiclesQuery.refetch();
+            if (model.customerStatus === 'error') model.retryCustomers();
+            else void model.vehiclesQuery.refetch();
             void model.dealershipsQuery.refetch();
           }}
         >
@@ -111,6 +114,11 @@ export function BookingForm({ model }: { model: BookingFormModel }) {
             onSelect={model.selectTime}
             onRetry={model.refetchSlots}
             error={errors.startTime?.message}
+          />
+          <AssignmentPanel
+            state={model.assignmentState}
+            preview={model.assignment}
+            onRetry={model.refetchAssignment}
           />
         </section>
       </div>

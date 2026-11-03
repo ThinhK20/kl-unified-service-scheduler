@@ -35,7 +35,9 @@ public sealed class AvailabilityService
     /// <summary>
     /// Loads the day: active qualified technicians and active matching bays of the dealership, their taken slots
     /// during opening hours, and confirmed appointment counts for the local day. Also all active technicians and
-    /// active service types of the dealership, which the strategy may use to protect scarce skills. Nothing is reserved.
+    /// active service types of the dealership, which the strategy may use to protect scarce skills. Every technician and
+    /// bay of the dealership (also inactive ones) is kept for <see cref="DaySchedule.TechnicianStates"/> and
+    /// <see cref="DaySchedule.ServiceBayStates"/>. Nothing is reserved.
     /// </summary>
     public async Task<DaySchedule> LoadDayAsync(
         Dealership dealership,
@@ -48,22 +50,29 @@ public sealed class AvailabilityService
 
         var openingHours = dealership.OpeningHoursUtc(localDate);
 
-        var activeTechnicians = (await _technicians.GetByDealershipWithSkillsAsync(dealership.Id, cancellationToken))
-            .Where(t => t.IsActive && t.DealershipId == dealership.Id)
+        var allTechnicians = (await _technicians.GetByDealershipWithSkillsAsync(dealership.Id, cancellationToken))
+            .Where(t => t.DealershipId == dealership.Id)
             .ToList();
+        var activeTechnicians = allTechnicians.Where(t => t.IsActive).ToList();
         var technicians = activeTechnicians
             .Where(t => t.IsQualifiedFor(serviceType.RequiredSkill, serviceType.MinimumTier))
             .ToList();
 
-        var bays = (await _serviceBays.GetByDealershipAsync(dealership.Id, cancellationToken))
+        var allBays = (await _serviceBays.GetByDealershipAsync(dealership.Id, cancellationToken))
+            .Where(b => b.DealershipId == dealership.Id)
+            .ToList();
+        var bays = allBays
             .Where(b => b.CanHost(serviceType, dealership.Id))
             .ToList();
 
-        if (technicians.Count == 0 || bays.Count == 0)
+        if (technicians.Count == 0 && bays.Count == 0)
         {
-            return new DaySchedule(dealership, serviceType, openingHours, [], [], [], new Dictionary<int, int>(), [], [], _strategy);
+            return new DaySchedule(
+                dealership, serviceType, openingHours, [], [], [], new Dictionary<int, int>(), [], [], _strategy, allTechnicians, allBays);
         }
 
+        // With only one kind present FindPairs still finds nothing, but the taken slots are loaded so the assignment
+        // preview can tell Busy from Free for the resources that do exist (SPEC section 6).
         var activeServiceTypes = await _serviceTypes.GetActiveAsync(dealership.Id, cancellationToken);
 
         var technicianIds = technicians.Select(t => t.Id).ToList();
@@ -76,8 +85,10 @@ public sealed class AvailabilityService
             cancellationToken);
 
         return new DaySchedule(
-            dealership, serviceType, openingHours, technicians, bays, taken, counts, activeTechnicians, activeServiceTypes, _strategy);
+            dealership, serviceType, openingHours, technicians, bays, taken, counts, activeTechnicians, activeServiceTypes, _strategy,
+            allTechnicians, allBays);
     }
+
     /// <summary>
     /// Loads every local date from <paramref name="fromLocalDate"/> to <paramref name="toLocalDate"/> (inclusive) for
     /// the days endpoint (SPEC section 6). Same resources and rules as <see cref="LoadDayAsync"/>, but the taken slots

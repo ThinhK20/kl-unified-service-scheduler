@@ -21,6 +21,8 @@ public sealed class DaySchedule
     private readonly IReadOnlyList<Technician> _dealershipTechnicians;
     private readonly IReadOnlyList<ServiceType> _activeServiceTypes;
     private readonly IResourceAllocationStrategy _strategy;
+    private readonly IReadOnlyList<Technician> _allTechnicians;
+    private readonly IReadOnlyList<ServiceBay> _allServiceBays;
 
     internal DaySchedule(
         Dealership dealership,
@@ -32,7 +34,9 @@ public sealed class DaySchedule
         IReadOnlyDictionary<int, int> confirmedCounts,
         IReadOnlyList<Technician> dealershipTechnicians,
         IReadOnlyList<ServiceType> activeServiceTypes,
-        IResourceAllocationStrategy strategy)
+        IResourceAllocationStrategy strategy,
+        IReadOnlyList<Technician>? allTechnicians = null,
+        IReadOnlyList<ServiceBay>? allServiceBays = null)
     {
         _dealership = dealership;
         _serviceType = serviceType;
@@ -46,6 +50,8 @@ public sealed class DaySchedule
         _dealershipTechnicians = dealershipTechnicians;
         _activeServiceTypes = activeServiceTypes;
         _strategy = strategy;
+        _allTechnicians = allTechnicians ?? technicians;
+        _allServiceBays = allServiceBays ?? serviceBays;
     }
 
     /// <summary>Opening hours of this day, UTC.</summary>
@@ -161,6 +167,51 @@ public sealed class DaySchedule
         {
             yield return TimeRange.FromStart(start, duration);
         }
+    }
+
+    /// <summary>
+    /// The state of EVERY technician of the dealership (also inactive ones) for <paramref name="range"/>, from the same
+    /// data and rules <see cref="FindPairs"/> uses (SPEC section 6, assignment preview). First match wins: Inactive,
+    /// NotQualified (skill and minimum tier), OffShift (<see cref="Technician.ShiftCovers"/>), Busy (a taken slot in
+    /// the range), WillServe (the technician of <paramref name="pick"/>), else Free. Unordered.
+    /// </summary>
+    public IReadOnlyList<TechnicianWithState> TechnicianStates(TimeRange range, ResourcePair? pick)
+    {
+        ArgumentNullException.ThrowIfNull(range);
+        var slots = SlotGrid.Split(range);
+        return _allTechnicians
+            .Select(t => new TechnicianWithState(t, t switch
+            {
+                { IsActive: false } => TechnicianState.Inactive,
+                _ when !t.IsQualifiedFor(_serviceType.RequiredSkill, _serviceType.MinimumTier) => TechnicianState.NotQualified,
+                _ when !t.ShiftCovers(range, _dealership.TimeZone) => TechnicianState.OffShift,
+                _ when !IsFree(ResourceType.Technician, t.Id, slots) => TechnicianState.Busy,
+                _ when pick?.Technician.Id == t.Id => TechnicianState.WillServe,
+                _ => TechnicianState.Free,
+            }))
+            .ToList();
+    }
+
+    /// <summary>
+    /// The state of EVERY service bay of the dealership (also inactive ones) for <paramref name="range"/>, from the same
+    /// data and rules <see cref="FindPairs"/> uses (SPEC section 6, assignment preview). First match wins: Inactive,
+    /// WrongType (<see cref="ServiceBay.Matches"/>), Busy (a taken slot in the range), WillServe (the bay of
+    /// <paramref name="pick"/>), else Free. Unordered.
+    /// </summary>
+    public IReadOnlyList<ServiceBayWithState> ServiceBayStates(TimeRange range, ResourcePair? pick)
+    {
+        ArgumentNullException.ThrowIfNull(range);
+        var slots = SlotGrid.Split(range);
+        return _allServiceBays
+            .Select(b => new ServiceBayWithState(b, b switch
+            {
+                { IsActive: false } => ServiceBayState.Inactive,
+                _ when !b.Matches(_serviceType.RequiredBayType) => ServiceBayState.WrongType,
+                _ when !IsFree(ResourceType.Bay, b.Id, slots) => ServiceBayState.Busy,
+                _ when pick?.ServiceBay.Id == b.Id => ServiceBayState.WillServe,
+                _ => ServiceBayState.Free,
+            }))
+            .ToList();
     }
 
     private StartTimeStatus Classify(TimeRange range, DateTime afterUtc, IReadOnlyList<DateTime>? vehicleSlotStartsUtc)

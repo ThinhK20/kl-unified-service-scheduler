@@ -69,12 +69,17 @@ export const TIME_ZONE = 'Asia/Ho_Chi_Minh';
 export const ZONE_OFFSET_MINUTES: Record<string, number> = { [TIME_ZONE]: 7 * 60 };
 
 export const customers: SeedCustomer[] = [
-  { id: 1, name: 'Demo Customer', email: 'demo@example.com', phone: '+84 900 000 000' },
+  { id: 1, name: 'An Nguyen', email: 'an.nguyen@example.com', phone: '+84 900 000 001' },
+  { id: 2, name: 'Binh Tran', email: 'binh.tran@example.com', phone: '+84 900 000 002' },
+  { id: 3, name: 'Chi Le', email: 'chi.le@example.com', phone: '+84 900 000 003' },
 ];
 
 export const vehicles: SeedVehicle[] = [
   { id: 1, customerId: 1, vin: 'JTDBT923X71000001', make: 'Toyota', model: 'Vios', year: 2021 },
   { id: 2, customerId: 1, vin: '7FARW2H58PE000002', make: 'Honda', model: 'CR-V', year: 2023 },
+  { id: 3, customerId: 2, vin: 'RLLV8EAA5RV000003', make: 'VinFast', model: 'VF 8', year: 2024 },
+  { id: 4, customerId: 3, vin: 'JM3KFBCM1N0000004', make: 'Mazda', model: 'CX-5', year: 2022 },
+  { id: 5, customerId: 3, vin: 'KNABE511AL0000005', make: 'Kia', model: 'Morning', year: 2020 },
 ];
 
 export const dealerships: SeedDealership[] = [

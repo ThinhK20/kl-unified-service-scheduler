@@ -1,7 +1,9 @@
 import type {
   AppointmentDto,
   AvailabilityDaysDto,
+  AssignmentPreviewDto,
   AvailabilityDto,
+  CustomerDto,
   DayStatus,
   DealershipDto,
   ServiceTypeDto,
@@ -27,6 +29,20 @@ export const serviceTypesByDealer: Record<number, ServiceTypeDto[]> = {
   ],
   2: [
     { id: 5, dealershipId: 2, name: 'Oil change', durationMinutes: 60, requiredSkill: 'General', minimumTier: 'Trainee', requiredBayType: 'Standard' },
+  ],
+};
+
+export const customers: CustomerDto[] = [
+  { id: 1, name: 'An Nguyen', email: 'an.nguyen@example.com', phone: '+84 900 000 001' },
+  { id: 2, name: 'Binh Tran', email: 'binh.tran@example.com', phone: '+84 900 000 002' },
+  { id: 3, name: 'Chi Le', email: 'chi.le@example.com', phone: '+84 900 000 003' },
+];
+
+export const vehiclesByCustomer: Record<number, VehicleDto[]> = {
+  2: [{ id: 3, customerId: 2, vin: 'RLLV8EAA5RV000003', make: 'VinFast', model: 'VF 8', year: 2024 }],
+  3: [
+    { id: 4, customerId: 3, vin: 'JM3KFBCM1N0000004', make: 'Mazda', model: 'CX-5', year: 2022 },
+    { id: 5, customerId: 3, vin: 'KNABE511AL0000005', make: 'Kia', model: 'Morning', year: 2020 },
   ],
 };
 
@@ -106,6 +122,35 @@ export function appointmentDto(overrides: Partial<AppointmentDto> = {}): Appoint
     serviceType: { id: 1, name: 'Oil change', durationMinutes: 60 },
     technician: { id: 3, name: 'Minh' },
     serviceBay: { id: 1, name: 'Bay 1', bayType: 'Standard' },
+    ...overrides,
+  };
+}
+
+/** Oil change 10:30-11:30 local on DATE: Minh and Bay 1 will serve. */
+export function assignmentPreviewDto(overrides: Partial<AssignmentPreviewDto> = {}): AssignmentPreviewDto {
+  return {
+    dealershipId: 1,
+    serviceTypeId: 1,
+    timeZoneId: TZ,
+    startUtc: '2030-01-15T03:30:00Z',
+    endUtc: '2030-01-15T04:30:00Z',
+    status: 'Assignable',
+    technician: { id: 3, name: 'Minh' },
+    serviceBay: { id: 1, name: 'Bay 1', bayType: 'Standard' },
+    technicians: [
+      { id: 3, name: 'Minh', state: 'WillServe' },
+      { id: 2, name: 'Lan', state: 'Free' },
+      { id: 1, name: 'Nam', state: 'Busy' },
+      { id: 6, name: 'Thao', state: 'OffShift' },
+      { id: 7, name: 'Vy', state: 'NotQualified' },
+      { id: 5, name: 'Tuan', state: 'Inactive' },
+    ],
+    serviceBays: [
+      { id: 1, name: 'Bay 1', bayType: 'Standard', state: 'WillServe' },
+      { id: 6, name: 'Bay 5', bayType: 'Standard', state: 'Busy' },
+      { id: 2, name: 'Bay 2', bayType: 'Lift', state: 'WrongType' },
+      { id: 5, name: 'Bay 4', bayType: 'Lift', state: 'Inactive' },
+    ],
     ...overrides,
   };
 }

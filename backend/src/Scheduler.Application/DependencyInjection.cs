@@ -24,11 +24,13 @@ public static class DependencyInjection
         services.AddScoped<CancelAppointmentHandler>();
         services.AddScoped<GetAvailabilityHandler>();
         services.AddScoped<GetAvailabilityDaysHandler>();
+        services.AddScoped<GetAssignmentPreviewHandler>();
         services.AddScoped<GetAppointmentsHandler>();
         services.AddScoped<GetAppointmentByIdHandler>();
         services.AddScoped<GetDealershipsHandler>();
         services.AddScoped<GetServiceTypesHandler>();
         services.AddScoped<GetCustomerVehiclesHandler>();
+        services.AddScoped<GetCustomersHandler>();
 
         return services;
     }

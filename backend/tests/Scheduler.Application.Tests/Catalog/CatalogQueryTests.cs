@@ -31,6 +31,25 @@ public class CatalogQueryTests
     }
 
     [Fact]
+    public async Task Customers_are_the_three_demo_customers_ordered_by_id()
+    {
+        var result = await _app.CustomersHandler().HandleAsync(CancellationToken.None);
+
+        result.Should().Equal(
+            new Scheduler.Application.Catalog.Dtos.CustomerDto(1, "An Nguyen", "an.nguyen@example.com", "+84 900 000 001"),
+            new Scheduler.Application.Catalog.Dtos.CustomerDto(2, "Binh Tran", "binh.tran@example.com", "+84 900 000 002"),
+            new Scheduler.Application.Catalog.Dtos.CustomerDto(3, "Chi Le", "chi.le@example.com", "+84 900 000 003"));
+    }
+
+    [Fact]
+    public async Task Vehicles_of_the_third_customer()
+    {
+        var result = await _app.VehiclesHandler().HandleAsync(new GetCustomerVehiclesQuery(3), CancellationToken.None);
+
+        result.Value.Select(v => (v.Id, v.Make, v.Model)).Should().Equal((4, "Mazda", "CX-5"), (5, "Kia", "Morning"));
+    }
+
+    [Fact]
     public async Task Vehicles_of_a_customer()
     {
         var result = await _app.VehiclesHandler().HandleAsync(new GetCustomerVehiclesQuery(1), CancellationToken.None);

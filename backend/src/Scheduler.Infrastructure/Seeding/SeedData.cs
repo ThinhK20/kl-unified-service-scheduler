@@ -11,7 +11,15 @@ public static class SeedData
 {
     public const string TimeZoneId = "Asia/Ho_Chi_Minh";
 
-    public const int DemoCustomerId = 1;
+    /// <summary>The first demo customer (An Nguyen); the guided demo books as this customer.</summary>
+    public const int DemoCustomerId = CustomerIds.AnNguyen;
+
+    public static class CustomerIds
+    {
+        public const int AnNguyen = 1;
+        public const int BinhTran = 2;
+        public const int ChiLe = 3;
+    }
 
     public static class DealershipIds
     {
@@ -50,17 +58,25 @@ public static class SeedData
     {
         public const int ToyotaVios = 1;
         public const int HondaCrv = 2;
+        public const int VinFastVf8 = 3;
+        public const int MazdaCx5 = 4;
+        public const int KiaMorning = 5;
     }
 
     internal static object[] Customers =>
     [
-        new { Id = DemoCustomerId, Name = "Demo Customer", Email = "demo@example.com", Phone = "+84 900 000 000" },
+        new { Id = CustomerIds.AnNguyen, Name = "An Nguyen", Email = "an.nguyen@example.com", Phone = "+84 900 000 001" },
+        new { Id = CustomerIds.BinhTran, Name = "Binh Tran", Email = "binh.tran@example.com", Phone = "+84 900 000 002" },
+        new { Id = CustomerIds.ChiLe, Name = "Chi Le", Email = "chi.le@example.com", Phone = "+84 900 000 003" },
     ];
 
     internal static object[] Vehicles =>
     [
-        new { Id = VehicleIds.ToyotaVios, CustomerId = DemoCustomerId, Vin = "JTDBT923X71000001", Make = "Toyota", Model = "Vios", Year = 2021 },
-        new { Id = VehicleIds.HondaCrv, CustomerId = DemoCustomerId, Vin = "7FARW2H58PE000002", Make = "Honda", Model = "CR-V", Year = 2023 },
+        new { Id = VehicleIds.ToyotaVios, CustomerId = CustomerIds.AnNguyen, Vin = "JTDBT923X71000001", Make = "Toyota", Model = "Vios", Year = 2021 },
+        new { Id = VehicleIds.HondaCrv, CustomerId = CustomerIds.AnNguyen, Vin = "7FARW2H58PE000002", Make = "Honda", Model = "CR-V", Year = 2023 },
+        new { Id = VehicleIds.VinFastVf8, CustomerId = CustomerIds.BinhTran, Vin = "RLLV8EAA5RV000003", Make = "VinFast", Model = "VF 8", Year = 2024 },
+        new { Id = VehicleIds.MazdaCx5, CustomerId = CustomerIds.ChiLe, Vin = "JM3KFBCM1N0000004", Make = "Mazda", Model = "CX-5", Year = 2022 },
+        new { Id = VehicleIds.KiaMorning, CustomerId = CustomerIds.ChiLe, Vin = "KNABE511AL0000005", Make = "Kia", Model = "Morning", Year = 2020 },
     ];
 
     internal static object[] Dealerships =>

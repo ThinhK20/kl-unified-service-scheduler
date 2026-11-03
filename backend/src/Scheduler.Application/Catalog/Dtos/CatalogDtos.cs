@@ -15,3 +15,6 @@ public sealed record ServiceTypeDto(
 
 /// <summary>A customer vehicle.</summary>
 public sealed record VehicleDto(int Id, int CustomerId, string Vin, string Make, string Model, int Year);
+
+/// <summary>A customer who books services (SPEC section 6, GET /api/customers).</summary>
+public sealed record CustomerDto(int Id, string Name, string Email, string Phone);

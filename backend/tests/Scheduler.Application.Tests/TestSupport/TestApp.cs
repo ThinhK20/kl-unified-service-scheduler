@@ -50,6 +50,10 @@ public sealed class TestApp
 
     public GetAvailabilityDaysHandler AvailabilityDaysHandler() => new(new GetAvailabilityDaysValidator(), Catalog, Catalog, Catalog, Appointments, Availability, Clock);
 
+    public GetAssignmentPreviewHandler AssignmentPreviewHandler() => new(new GetAssignmentPreviewValidator(), Catalog, Catalog, Catalog, Appointments, Availability, Clock);
+
+    public GetCustomersHandler CustomersHandler() => new(Catalog);
+
     public GetAppointmentsHandler AppointmentsHandler() => new(Appointments);
 
     public GetAppointmentByIdHandler AppointmentByIdHandler() => new(Appointments);

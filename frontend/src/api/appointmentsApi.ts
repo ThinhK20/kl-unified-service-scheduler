@@ -3,6 +3,12 @@
 import { apiRequest } from './apiClient';
 import type {
   Appointment,
+  AssignmentPreview,
+  AssignmentPreviewDto,
+  AssignmentStatus,
+  BayState,
+  Customer,
+  CustomerDto,
   AppointmentDto,
   Availability,
   AvailabilityDays,
@@ -19,6 +25,7 @@ import type {
   StartTime,
   StartTimeDto,
   StartTimeStatus,
+  TechnicianState,
   TimeSlot,
   Vehicle,
   VehicleDto,
@@ -80,6 +87,28 @@ export function toAvailabilityDays(dto: AvailabilityDaysDto): AvailabilityDays {
   };
 }
 
+const ASSIGNMENT_STATUSES: ReadonlySet<string> = new Set<AssignmentStatus>(['Past', 'VehicleBooked', 'NoAvailability', 'Assignable']);
+const TECHNICIAN_STATES: ReadonlySet<string> = new Set<TechnicianState>(['WillServe', 'Free', 'Busy', 'OffShift', 'NotQualified', 'Inactive']);
+const BAY_STATES: ReadonlySet<string> = new Set<BayState>(['WillServe', 'Free', 'Busy', 'WrongType', 'Inactive']);
+
+/** Unknown values from a newer API are shown as "not available" rather than promised. */
+export function toAssignmentPreview(dto: AssignmentPreviewDto): AssignmentPreview {
+  const status: AssignmentStatus = ASSIGNMENT_STATUSES.has(dto.status) ? dto.status : 'NoAvailability';
+  const assignable = status === 'Assignable' && dto.technician !== null && dto.serviceBay !== null;
+  return {
+    dealershipId: dto.dealershipId,
+    serviceTypeId: dto.serviceTypeId,
+    timeZoneId: dto.timeZoneId,
+    start: new Date(dto.startUtc),
+    end: new Date(dto.endUtc),
+    status: assignable ? status : status === 'Assignable' ? 'NoAvailability' : status,
+    technician: assignable ? dto.technician : null,
+    serviceBay: assignable ? dto.serviceBay : null,
+    technicians: dto.technicians.map((t) => ({ ...t, state: TECHNICIAN_STATES.has(t.state) ? t.state : 'Busy' })),
+    serviceBays: dto.serviceBays.map((b) => ({ ...b, state: BAY_STATES.has(b.state) ? b.state : 'Busy' })),
+  };
+}
+
 export function toVehicle(dto: VehicleDto): Vehicle {
   return { ...dto, displayName: vehicleDisplayName(dto) };
 }
@@ -108,6 +137,10 @@ export async function getDealerships(signal?: AbortSignal): Promise<Dealership[]
 export async function getServiceTypes(dealershipId: number, signal?: AbortSignal): Promise<ServiceType[]> {
   const query = new URLSearchParams({ dealershipId: String(dealershipId) });
   return apiRequest<ServiceTypeDto[]>(`/api/service-types?${query.toString()}`, { signal });
+}
+
+export async function getCustomers(signal?: AbortSignal): Promise<Customer[]> {
+  return apiRequest<CustomerDto[]>('/api/customers', { signal });
 }
 
 export async function getCustomerVehicles(customerId: number, signal?: AbortSignal): Promise<Vehicle[]> {
@@ -144,6 +177,26 @@ export async function getAvailabilityDays(
     { signal },
   );
   return toAvailabilityDays(dto);
+}
+
+/** Who would serve this booking if it were made now. Reserves nothing. */
+export async function getAssignmentPreview(
+  params: {
+    dealershipId: number;
+    serviceTypeId: number;
+    /** ISO-8601 with an offset, e.g. "2026-11-10T10:30:00+07:00" (same format as the booking request). */
+    startTime: string;
+    vehicleId?: number | null;
+  },
+  signal?: AbortSignal,
+): Promise<AssignmentPreview> {
+  const query = new URLSearchParams({ serviceTypeId: String(params.serviceTypeId), startTime: params.startTime });
+  if (params.vehicleId != null) query.set('vehicleId', String(params.vehicleId));
+  const dto = await apiRequest<AssignmentPreviewDto>(
+    `/api/dealerships/${params.dealershipId}/assignment-preview?${query.toString()}`,
+    { signal },
+  );
+  return toAssignmentPreview(dto);
 }
 
 export async function bookAppointment(request: BookAppointmentRequest, idempotencyKey: string): Promise<Appointment> {

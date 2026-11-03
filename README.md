@@ -134,8 +134,9 @@ The SQL Server image itself comes from `mcr.microsoft.com`.
 real React app against a simulated API in the browser (same seed data and booking rules as the backend, demo data kept
 in the browser). Useful for a quick look without .NET or SQL Server; it is a demo, not the real backend.
 
-Click **Play the demo** in the top banner for a hands-free tour (about 45 seconds). It drives the real screens like a
-person would: it picks a day in the calendar and books an EV battery check (the system assigns Lan and the EV bay),
+Click **Play the demo** in the top banner for a hands-free tour (about 50 seconds). It drives the real screens like a
+person would: it picks a day in the calendar and a time, points at "Who will serve you" (Lan and the EV bay), books
+the EV battery check (the confirmation shows the same pair),
 shows that the same car now has 10:00 disabled as "Your car is booked", starts a second booking with the other car
 while a simulated other customer takes the same time (409 with suggested times, then booking a suggestion), and
 cancels the first booking with the confirm step. **Stop** ends it at any point; **Replay** runs it again from fresh data.
@@ -390,9 +391,11 @@ have an offset (a value without one is rejected, never read as server local time
 |---|---|---|---|
 | GET | `/api/dealerships` | Active dealerships with local opening hours | 200 |
 | GET | `/api/service-types?dealershipId={id}` | Active service types (filter is optional) | 200, 400 |
+| GET | `/api/customers` | The demo customers (for the "Booking as" switcher) | 200 |
 | GET | `/api/customers/{id}/vehicles` | A customer's vehicles | 200, 404 |
 | GET | `/api/dealerships/{id}/availability?serviceTypeId=&date=YYYY-MM-DD[&vehicleId=]` | Every start time on that local day with a status (`Available`, `Booked`, `VehicleBooked`, `Past`); `slots` = the Available ones. Optional `vehicleId` makes it car-aware. Reserves nothing | 200, 400, 404, 422 |
 | GET | `/api/dealerships/{id}/availability/days?serviceTypeId=&from=&to=[&vehicleId=]` | Per-day status for a calendar (`Available`, `FullyBooked`, `Past`) and the count of Available times; at most 42 days | 200, 400, 404, 422 |
+| GET | `/api/dealerships/{id}/assignment-preview?serviceTypeId=&startTime=[&vehicleId=]` | Who would serve this booking if made now: the expected technician and bay (the same pick booking makes) and every technician and bay with a state (`WillServe`, `Free`, `Busy`, `OffShift`, `NotQualified`/`WrongType`, `Inactive`). Reserves nothing | 200, 400, 404, 422 |
 | POST | `/api/appointments` (header `Idempotency-Key`, required, max 100) | Book. The system picks technician and bay; the car must be free | 201 + `Location`, 400, 404, 409, 422, 503 |
 | GET | `/api/appointments?customerId={id}` | A customer's appointments, newest first (`[]` for an unknown customer) | 200, 400 |
 | GET | `/api/appointments/{id}` | One appointment with technician and bay | 200, 404 |
@@ -549,14 +552,14 @@ for this size).
 | Level | Project | Tests | What it proves |
 |---|---|---|---|
 | Domain unit | `Scheduler.Domain.Tests` | 97 | `TimeRange` overlap (touching = no overlap, inside, crossing, identical); `SlotGrid` grid check, rounding, `Split` (60 min → 4 slots, 90 → 6); `Appointment.Create` rules, snapshots and slot rows for technician, bay and car; `Cancel` only from Confirmed and only before the start; an unknown stored time zone is broken data (not a client error); tier order and `IsQualifiedFor`; shifts and opening hours checked in local time (ending exactly at close is allowed, one minute later is not) |
-| Application unit | `Scheduler.Application.Tests` | 174 | Availability statuses and their order (Past → VehicleBooked → Booked → Available), `slots` = Available, days results equal per-day results, range and vehicleId validation; Scarcity-aware technician choice (oil change at 10:00 → Nam, so Lan, the only EV technician, stays free for an EV check; Brake inspection: Minh at 13:00, Nam at 09:00); each ordering rule in isolation; inactive, unqualified, off-shift and wrong-bay resources skipped; next pair tried on SlotTaken; 409 with ≤ 3 nearest suggestions; idempotent replay and conflict, including a replay after the start time passed and a same-key race; car already booked → `VEHICLE_ALREADY_BOOKED` (pre-check and a twin booking that wins during the save); validator rules incl. the technical year bound; opening hours → 422; transient error retried once then 503; cancel paths. Uses hand-written fakes and `FakeClock` |
+| Application unit | `Scheduler.Application.Tests` | 211 | Assignment preview: every technician and bay state, list order, status order, the pick equals what booking chooses right after (oil change 10:00 → Nam, not Lan); Availability statuses and their order (Past → VehicleBooked → Booked → Available), `slots` = Available, days results equal per-day results, range and vehicleId validation; Scarcity-aware technician choice (oil change at 10:00 → Nam, so Lan, the only EV technician, stays free for an EV check; Brake inspection: Minh at 13:00, Nam at 09:00); each ordering rule in isolation; inactive, unqualified, off-shift and wrong-bay resources skipped; next pair tried on SlotTaken; 409 with ≤ 3 nearest suggestions; idempotent replay and conflict, including a replay after the start time passed and a same-key race; car already booked → `VEHICLE_ALREADY_BOOKED` (pre-check and a twin booking that wins during the save); validator rules incl. the technical year bound; opening hours → 422; transient error retried once then 503; cancel paths. Uses hand-written fakes and `FakeClock` |
 | Architecture | `Scheduler.ArchitectureTests` | 6 | Domain depends on nothing else (and only on base-library assemblies); Application never references EF Core, Infrastructure or Api; Infrastructure never references Api; entities have no public setters |
-| Integration – persistence | `Scheduler.IntegrationTests` (Persistence, Repositories) | 24 | On a real SQL Server (Testcontainers): migration and seed data, the unique slot index rejects overlaps (touching jobs are fine), cancel frees slots, SlotTaken / IdempotencyKeyTaken / transient error mapping, rowversion conflict on a double cancel, a 10-way repository race with exactly one success |
-| Integration – API | `Scheduler.IntegrationTests` (Api) | 95 | Full HTTP API with `WebApplicationFactory` on the real database: catalog, availability (car-busy times, a fully booked day, days endpoint = day endpoint over 12 days × 4 services × 3 car options, **every Available time books with 201**, Booked → 409 NO_AVAILABILITY, VehicleBooked → 409 VEHICLE_ALREADY_BOOKED), book → 201 + Location, scarcity-aware allocation end-to-end, cancel then rebook, cancel after the start → 409, same car at two dealerships → 409, year 9999 → 400 (not 500), broken time zone data → 500, 400/404/405/415/422 shapes, idempotency, `NO_AVAILABILITY` suggestions, CORS, health, Swagger |
-| **Concurrency** | Api | (in the 95) | **`Twenty_parallel_bookings_of_the_same_slot_give_exactly_one_201_and_nineteen_409`**: 20 different cars, exactly 1 × 201, 19 × 409, 1 appointment row and 12 slot rows. `Ten_parallel_bookings_of_the_same_vehicle_at_different_dealerships_give_one_201_and_nine_409`: 1 × 201, 9 × `VEHICLE_ALREADY_BOOKED`. `Ten_parallel_retries_with_the_same_key_and_body_all_get_the_same_appointment`: all 201 with the same id, 1 row |
-| Frontend | `frontend` (Vitest + React Testing Library) | 91 | Booking form validation; calendar disables past and fully booked days but keeps them focusable and announced, arrow-key navigation; taken times shown disabled with the reason, past times hidden; changing the car clears a time that is no longer free; free times shown in dealership time; Book disabled while saving; 409 shows suggested times that can be clicked; 503 and network errors show Try again; cancel only on Confirmed and the list refreshes; the API adapter turns ProblemDetails into typed errors; time-zone helpers; the preview's simulated API matches the real rules (parity tests) |
+| Integration – persistence | `Scheduler.IntegrationTests` (Persistence, Repositories) | 26 | On a real SQL Server (Testcontainers): migration and seed data (all migrations on an empty database: 3 customers, 5 vehicles), the unique slot index rejects overlaps (touching jobs are fine), cancel frees slots, SlotTaken / IdempotencyKeyTaken / transient error mapping, rowversion conflict on a double cancel, a 10-way repository race with exactly one success |
+| Integration – API | `Scheduler.IntegrationTests` (Api) | 115 | Full HTTP API with `WebApplicationFactory` on the real database: catalog and customers, assignment preview (**every Assignable preview on a busy day books 201 with exactly that technician and bay**), availability (car-busy times, a fully booked day, days endpoint = day endpoint over 12 days × 4 services × 3 car options, **every Available time books with 201**, Booked → 409 NO_AVAILABILITY, VehicleBooked → 409 VEHICLE_ALREADY_BOOKED), book → 201 + Location, scarcity-aware allocation end-to-end, cancel then rebook, cancel after the start → 409, same car at two dealerships → 409, year 9999 → 400 (not 500), broken time zone data → 500, 400/404/405/415/422 shapes, idempotency, `NO_AVAILABILITY` suggestions, CORS, health, Swagger |
+| **Concurrency** | Api | (in the 115) | **`Twenty_parallel_bookings_of_the_same_slot_give_exactly_one_201_and_nineteen_409`**: 20 different cars, exactly 1 × 201, 19 × 409, 1 appointment row and 12 slot rows. `Ten_parallel_bookings_of_the_same_vehicle_at_different_dealerships_give_one_201_and_nine_409`: 1 × 201, 9 × `VEHICLE_ALREADY_BOOKED`. `Ten_parallel_retries_with_the_same_key_and_body_all_get_the_same_appointment`: all 201 with the same id, 1 row |
+| Frontend | `frontend` (Vitest + React Testing Library) | 123 | "Booking as" switcher (switching shows that customer's cars and appointments, stored choice, blocked storage, locked while saving); "Who will serve you" panel (states, highlight, hidden after a 409, refetch on time or car change); Booking form validation; calendar disables past and fully booked days but keeps them focusable and announced, arrow-key navigation; taken times shown disabled with the reason, past times hidden; changing the car clears a time that is no longer free; free times shown in dealership time; Book disabled while saving; 409 shows suggested times that can be clicked; 503 and network errors show Try again; cancel only on Confirmed and the list refreshes; the API adapter turns ProblemDetails into typed errors; time-zone helpers; the preview's simulated API matches the real rules (parity tests) |
 
-Total: 97 + 174 + 6 + 119 + 91 = **487 tests**.
+Total: 97 + 211 + 6 + 141 + 123 = **578 tests**.
 
 ---
 
@@ -579,7 +582,7 @@ Total: 97 + 174 + 6 + 119 + 91 = **487 tests**.
 
 **Assumptions** (from the plan): one job needs exactly one technician and one bay; durations are multiples of 15 minutes
 (otherwise rounded up); shifts are the same every day (no holidays or leave); a job may not cross local midnight;
-no login, one demo customer (id 1). Out of scope: login, notifications, rescheduling, multi-technician jobs, payment.
+no login: three demo customers chosen with a "Booking as" switcher. Out of scope: login, notifications, rescheduling, multi-technician jobs, payment.
 
 ---
 
@@ -603,7 +606,7 @@ no login, one demo customer (id 1). Out of scope: login, notifications, reschedu
 - **Rescheduling** an appointment (move it in one transaction: free old slots, take new ones).
 - An optional **`latestFinish` window** on the request, so the system books the earliest free time in the window instead of answering 409.
 - **Notifications** (email/SMS) on booking and cancel.
-- **Login and accounts** instead of the demo customer.
+- **Login and accounts** instead of the demo customer switcher.
 - **Holidays, leave and special opening hours** for dealerships and technicians.
 - **Jobs that need more than one technician** or more than one bay.
 - **Observability**: structured logs, metrics (bookings, 409 rate, retries) and tracing.

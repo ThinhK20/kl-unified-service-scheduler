@@ -2,7 +2,7 @@ namespace Scheduler.IntegrationTests.Api;
 
 /// <summary>
 /// One date per API test, so tests sharing the database never see each other's bookings.
-/// Persistence tests use March 2030; API tests use June to September 2030 (plus January-February 2031 for the 42-day range) (all after FixedClock.DefaultNow).
+/// Persistence tests use March 2030; API tests use June to October 2030 (plus January-February 2031 for the 42-day range) (all after FixedClock.DefaultNow).
 /// </summary>
 internal static class TestDays
 {
@@ -37,6 +37,11 @@ internal static class TestDays
     public static readonly DateOnly TimesEveryAvailableOil = new(2030, 9, 5);
     public static readonly DateOnly DaysRangeFrom = new(2030, 9, 9);
     public static readonly DateOnly DaysRangeTo = new(2030, 9, 20);
+    // Assignment preview: October 2030.
+    public static readonly DateOnly PreviewQuietDay = new(2030, 10, 1);
+    public static readonly DateOnly PreviewBusyDay = new(2030, 10, 2);
+    public static readonly DateOnly PreviewCarBusy = new(2030, 10, 3);
+
     public static readonly DateOnly DaysMaxRangeFrom = new(2031, 1, 1);
     public static readonly DateOnly DaysMaxRangeTo = new(2031, 2, 11); // 42 days, counting both ends
 }

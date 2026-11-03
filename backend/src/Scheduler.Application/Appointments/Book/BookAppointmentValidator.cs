@@ -1,6 +1,4 @@
 using FluentValidation;
-using Scheduler.Application.Common;
-using Scheduler.Domain.ValueObjects;
 
 namespace Scheduler.Application.Appointments.Book;
 
@@ -28,18 +26,6 @@ public sealed class BookAppointmentValidator : AbstractValidator<BookAppointment
         RuleFor(x => x.DealershipId).GreaterThan(0).WithMessage("dealershipId is required.").OverridePropertyName("dealershipId");
         RuleFor(x => x.ServiceTypeId).GreaterThan(0).WithMessage("serviceTypeId is required.").OverridePropertyName("serviceTypeId");
 
-        RuleFor(x => x.StartTime)
-            .Cascade(CascadeMode.Stop)
-            .NotEmpty().WithMessage("startTime is required.")
-            .Must(value => IsoDateTime.TryParseWithOffsetToUtc(value, out _))
-            .WithMessage("startTime must be an ISO-8601 date and time with an offset, for example 2026-11-10T10:30:00+07:00.")
-            .Must(value => SupportedDates.Contains(ToUtc(value)))
-            .WithMessage(SupportedDates.Message("startTime"))
-            .Must(value => SlotGrid.IsOnGrid(ToUtc(value)))
-            .WithMessage("startTime must be on the 15-minute grid (:00, :15, :30 or :45, with zero seconds).")
-            .OverridePropertyName("startTime");
+        RuleFor(x => x.StartTime).BookingStartTime();
     }
-
-    private static DateTime ToUtc(string? value) =>
-        IsoDateTime.TryParseWithOffsetToUtc(value, out var utc) ? utc : default;
 }

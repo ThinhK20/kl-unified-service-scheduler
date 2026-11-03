@@ -33,4 +33,7 @@ public interface IVehicleRepository
 public interface ICustomerRepository
 {
     Task<bool> ExistsAsync(int customerId, CancellationToken cancellationToken);
+
+    /// <summary>All customers, ordered by Id. Read only.</summary>
+    Task<IReadOnlyList<Customer>> GetAllAsync(CancellationToken cancellationToken);
 }
